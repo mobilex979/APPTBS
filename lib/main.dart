@@ -1,8 +1,10 @@
-// Aplikasi Nota Timbang TBS - layar utama
+// Aplikasi Buslin Bross - Nota Timbang TBS (layar utama)
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'db_helper.dart';
 import 'excel_exporter.dart';
 import 'nota_parser.dart';
@@ -13,7 +15,7 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Nota Timbang TBS',
+        title: 'Buslin Bross - Nota Timbang TBS',
         theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
         home: const HomePage(),
       );
@@ -83,6 +85,48 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // HAPUS SEMUA DATA + FILE EXCEL (dengan konfirmasi dulu)
+  Future<void> _hapusSemua() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus semua data?'),
+        content: const Text(
+            'Semua nota tersimpan dan file Excel hasil export akan dihapus permanen.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final d = await DBHelper.db;
+    await d.delete('nota');   // hapus semua baris tabel
+
+    // hapus file Excel hasil export (Nota_Timbang_*.xlsx)
+    try {
+      final dir = await getExternalStorageDirectory()
+          ?? await getApplicationDocumentsDirectory();
+      for (final f in dir.listSync()) {
+        if (f is File && f.path.contains('Nota_Timbang_') && f.path.endsWith('.xlsx')) {
+          f.deleteSync();
+        }
+      }
+    } catch (_) {}
+
+    final c = await DBHelper.count();
+    setState(() => savedCount = c);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Semua data & file Excel dihapus.')));
+    }
+  }
+
   Future<void> _exportExcel() async {
     final rows = await DBHelper.all();
     if (rows.isEmpty) {
@@ -110,7 +154,7 @@ class _HomePageState extends State<HomePage> {
             TextField(controller: supplier,
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
-                decoration: const InputDecoration(labelText: 'No Nota')),
+                decoration: const InputDecoration(labelText: 'No Tiket')),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -145,11 +189,28 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nota Timbang TBS'),
-          actions: [Padding(
+      appBar: AppBar(
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Buslin Bross'),
+            Text('Nota Timbang TBS',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+          ],
+        ),
+        actions: [
+          // TOMBOL HAPUS SEMUA DATA + FILE EXCEL
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'Hapus semua data',
+            onPressed: savedCount == 0 ? null : _hapusSemua,
+          ),
+          Padding(
             padding: const EdgeInsets.all(16),
             child: Center(child: Text('Tersimpan: $savedCount')),
-          )]),
+          ),
+        ],
+      ),
       body: loading
           ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               CircularProgressIndicator(),
