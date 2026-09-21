@@ -37,7 +37,7 @@ class ExcelExporter {
         for (var c = 0; c < vals.length; c++) {
           final cell = ws.getRangeByIndex(r + 2, c + 1);
           if (vals[c] is num) {
-            cell.setNumber(vals[c] as num);
+            cell.setNumber((vals[c] as num).toDouble());
           } else {
             cell.setText(vals[c]?.toString() ?? '');
           }
