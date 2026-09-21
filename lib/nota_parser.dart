@@ -62,16 +62,28 @@ class NotaParser {
     if (s == null || s.trim().isEmpty) return null;
     s = s.trim().replaceAll(' ', '');
     if (s.contains(',') && s.contains('.')) {
-      s = s.replaceAll('.', '').replaceAll(',', '.');
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+        s = s.replaceAll('.', '').replaceAll(',', '.'); // 1.234,56 -> 1234.56
+      } else {
+        s = s.replaceAll(',', '');                      // 1,234.56 -> 1234.56
+      }
     } else if (s.contains(',')) {
-      s = s.replaceAll(',', '.');
+      final parts = s.split(',');
+      if (parts.length == 2 && parts[1].length == 3) {
+        s = s.replaceAll(',', '');   // 8,460 -> 8460 (ribuan, titik salah baca jadi koma)
+      } else if (parts.length > 2) {
+        s = s.replaceAll(',', '');   // 13,750,500 -> ribuan
+      } else {
+        s = s.replaceAll(',', '.');  // 4,60 -> 4.6 (desimal)
+      }
     } else if (s.contains('.')) {
       final parts = s.split('.');
       if (parts.length == 2 && parts[1].length == 3) {
-        s = s.replaceAll('.', '');          // 8.460 -> 8460 (pemisah ribuan)
+        s = s.replaceAll('.', '');   // 8.460 -> 8460 (pemisah ribuan)
       } else if (parts.length > 2) {
-        s = s.replaceAll('.', '');          // jam 08.14.23
+        s = s.replaceAll('.', '');   // 13.750.500 -> ribuan
       }
+      // else: 4.60 -> 4.6 desimal (dibiarkan)
     }
     return double.tryParse(s);
   }
