@@ -36,7 +36,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    DBHelper.count().then((c) => setState(() => savedCount = c));
+    _refreshCount();
+  }
+
+  Future<void> _refreshCount() async {
+    final c = await DBHelper.count();
+    setState(() => savedCount = c);
   }
 
   Future<String> _ocr(String path) async {
@@ -74,11 +79,8 @@ class _HomePageState extends State<HomePage> {
     for (final n in draft) {
       await DBHelper.insert(n);
     }
-    final c = await DBHelper.count();
-    setState(() {
-      draft.clear();
-      savedCount = c;
-    });
+    setState(() => draft.clear());
+    await _refreshCount();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua nota tersimpan.')));
@@ -119,8 +121,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (_) {}
 
-    final c = await DBHelper.count();
-    setState(() => savedCount = c);
+    await _refreshCount();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data & file Excel dihapus.')));
@@ -186,6 +187,15 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // BUKA LAYAR REVIEW DATA TERSIMPAN
+  Future<void> _bukaDataTersimpan() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SavedPage()),
+    );
+    await _refreshCount();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -205,9 +215,14 @@ class _HomePageState extends State<HomePage> {
             tooltip: 'Hapus semua data',
             onPressed: savedCount == 0 ? null : _hapusSemua,
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Center(child: Text('Tersimpan: $savedCount')),
+          // COUNTER TERSIMPAN = TOMBOL BUKA DATA TERSIMPAN
+          InkWell(
+            onTap: _bukaDataTersimpan,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(child: Text('Tersimpan: $savedCount')),
+            ),
           ),
         ],
       ),
@@ -272,6 +287,152 @@ class _HomePageState extends State<HomePage> {
           ]),
         ]),
       ),
+    );
+  }
+}
+
+// ═══════════ LAYAR REVIEW DATA TERSIMPAN (bisa edit & hapus per baris) ═══════════
+class SavedPage extends StatefulWidget {
+  const SavedPage({super.key});
+  @override
+  State<SavedPage> createState() => _SavedPageState();
+}
+
+class _SavedPageState extends State<SavedPage> {
+  List<Map<String, dynamic>> rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    rows = await DBHelper.all();
+    setState(() {});
+  }
+
+  String _fmt(dynamic v) => v == null ? '-' : v.toString();
+
+  Future<void> _editRow(Map<String, dynamic> m) async {
+    final supplier = TextEditingController(text: m['supplier']?.toString());
+    final noNota = TextEditingController(text: m['no_nota']?.toString());
+    final bruto = TextEditingController(text: m['bruto']?.toString());
+    final tara = TextEditingController(text: m['tara']?.toString());
+    final netto = TextEditingController(text: m['netto']?.toString());
+    final berat = TextEditingController(text: m['netto_bersih']?.toString());
+    final harga = TextEditingController(text: m['harga']?.toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Nota #${m['id']}'),
+        content: SingleChildScrollView(
+          child: Column(children: [
+            TextField(controller: supplier,
+                decoration: const InputDecoration(labelText: 'Supplier')),
+            TextField(controller: noNota,
+                decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: bruto, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Bruto (kg)')),
+            TextField(controller: tara, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Tara (kg)')),
+            TextField(controller: netto, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Netto (kg)')),
+            TextField(controller: berat, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Berat Bersih (kg)')),
+            TextField(controller: harga, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Harga/kg')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Simpan')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final b = double.tryParse(bruto.text);
+      final t = double.tryParse(tara.text);
+      final n = double.tryParse(netto.text);
+      final bb = double.tryParse(berat.text);
+      final h = double.tryParse(harga.text);
+      await DBHelper.update(m['id'] as int, {
+        'supplier': supplier.text.isEmpty ? null : supplier.text,
+        'no_nota': noNota.text,
+        'bruto': b, 'tara': t, 'netto': n,
+        'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
+        'harga': h,
+        'total': (bb != null && h != null) ? bb * h : null,
+      });
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nota diperbarui.')));
+      }
+    }
+  }
+
+  Future<void> _hapusRow(Map<String, dynamic> m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus Nota #${m['id']}?'),
+        content: Text('${m['supplier'] ?? '-'} • ${_fmt(m['netto_bersih'])} kg'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await DBHelper.delete(m['id'] as int);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Data Tersimpan - Review & Edit')),
+      body: rows.isEmpty
+          ? const Center(child: Text('Belum ada data tersimpan.'))
+          : ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (ctx, i) {
+                final m = rows[i];
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: ListTile(
+                    leading: CircleAvatar(child: Text('${m['id']}')),
+                    title: Text('${m['supplier'] ?? '(tanpa supplier)'}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                      'Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])}\n'
+                      'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
+                      'Netto: ${_fmt(m['netto'])} kg\n'
+                      'Berat bersih: ${_fmt(m['netto_bersih'])} kg • '
+                      'Harga: ${_fmt(m['harga'])} • Total: ${_fmt(m['total'])}',
+                    ),
+                    isThreeLine: true,
+                    trailing: Wrap(spacing: 4, children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        onPressed: () => _editRow(m),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, size: 20,
+                            color: Colors.red),
+                        onPressed: () => _hapusRow(m),
+                      ),
+                    ]),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

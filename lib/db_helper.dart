@@ -27,6 +27,9 @@ class DBHelper {
   static Future<int> insert(Nota n) async =>
       (await db).insert('nota', n.toMap());
 
+  static Future<int> update(int id, Map<String, dynamic> values) async =>
+      (await db).update('nota', values, where: 'id = ?', whereArgs: [id]);
+
   static Future<List<Map<String, dynamic>>> all() async =>
       (await db).query('nota', orderBy: 'id DESC');
 
