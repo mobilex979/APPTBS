@@ -16,6 +16,9 @@ jobs:
           flutter-version: '3.24.0'
           channel: 'stable'
 
+      # Buat scaffold Android otomatis (folder android/ yang sebelumnya kurang)
+      - run: flutter create --platforms android --project-name nota_tbs_app .
+
       - run: flutter pub get
 
       - run: flutter build apk --debug
