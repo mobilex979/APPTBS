@@ -5,6 +5,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
 import 'db_helper.dart';
 import 'excel_exporter.dart';
 import 'nota_parser.dart';
@@ -44,14 +45,51 @@ class _HomePageState extends State<HomePage> {
     setState(() => savedCount = c);
   }
 
+  // Nilai kualitas hasil OCR: keyword nota + jumlah field berhasil diekstrak
+  int _scoreOcr(String text) {
+    var score = 0;
+    final up = text.toUpperCase();
+    for (final k in ['BRUTO', 'TARRA', 'TARA', 'NETTO', 'BERAT',
+        'TIKET', 'RELASI', 'PLAT NO', 'SORTASI']) {
+      if (up.contains(k)) score += 2;
+    }
+    final n = NotaParser.parse(text, '');
+    if (n.noNota != null) score += 2;
+    if (n.supplier != null) score += 3;
+    if (n.bruto != null) score += 3;
+    if (n.tara != null) score += 3;
+    if (n.netto != null) score += 3;
+    if (n.berat != null) score += 2;
+    return score;
+  }
+
+  // OCR dengan auto-rotate: coba 4 arah putaran (0/90/180/270),
+  // ambil hasil dengan skor tertinggi (atasi foto nota miring/terbalik)
   Future<String> _ocr(String path) async {
+    final bytes = await File(path).readAsBytes();
+    var image = img.decodeImage(bytes);
+    if (image == null) return '';
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    final tmpDir = await getTemporaryDirectory();
+    String bestText = '';
+    var bestScore = -1;
     try {
-      final res = await recognizer.processImage(InputImage.fromFilePath(path));
-      return res.text;
+      for (var r = 0; r < 4; r++) {
+        if (r > 0) image = img.copyRotate(image!, angle: 90);
+        final tmp = File('${tmpDir.path}/ocr_rot$r.jpg');
+        await tmp.writeAsBytes(img.encodeJpg(image!, quality: 90));
+        final res =
+            await recognizer.processImage(InputImage.fromFilePath(tmp.path));
+        final score = _scoreOcr(res.text);
+        if (score > bestScore) {
+          bestScore = score;
+          bestText = res.text;
+        }
+      }
     } finally {
       recognizer.close();
     }
+    return bestText;
   }
 
   Future<void> _prosesGambar(List<XFile> files) async {
