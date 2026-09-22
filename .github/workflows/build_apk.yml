@@ -13,7 +13,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.29.2'
           channel: 'stable'
 
       # Buat scaffold Android lengkap (folder android/ dibuat baru tiap build)
@@ -30,12 +30,6 @@ jobs:
           keyAlias=buslin
           storeFile=buslin-keystore.p12
           EOF
-
-      # Naikkan versi Kotlin agar kompatibel Java 17
-      - name: Fix Kotlin version
-        run: |
-          sed -i 's/org.jetbrains.kotlin.android" version "[0-9.]*"/org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
-          grep kotlin android/settings.gradle
 
       - run: flutter pub get
 
