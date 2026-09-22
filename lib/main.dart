@@ -846,13 +846,28 @@ class _PanenPageState extends State<PanenPage> {
   }
 
   // dialog pilih nota timbang yang terhubung ke blok ini (bisa beberapa)
+  // - selalu membaca data panen terbaru dari DB (anti data usang)
+  // - tiket yang sudah terhubung ke blok LAIN dikunci & ditandai (anti dobel)
   Future<void> _linkTiket(Map<String, dynamic> p) async {
-    final selected = _linkedIds(p).toSet();
+    final allPanen = await DBHelper.allPanen();
+    final cur = allPanen.firstWhere((e) => e['id'] == p['id'], orElse: () => p);
+    final selected = _linkedIds(cur).toSet();
+
+    // peta: id tiket -> nama blok lain yang sudah memakainya
+    final linkedElsewhere = <int, String>{};
+    for (final q in allPanen) {
+      if (q['id'] == cur['id']) continue;
+      final qb = q['blok']?.toString() ?? '?';
+      for (final id in _linkedIds(q)) {
+        linkedElsewhere[id] = qb;
+      }
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
-          title: Text('Hubungkan Tiket \u2192 Blok ${p['blok']}'),
+          title: Text('Hubungkan Tiket \u2192 Blok ${cur['blok']}'),
           content: SizedBox(
             width: double.maxFinite,
             height: 360,
@@ -868,15 +883,25 @@ class _PanenPageState extends State<PanenPage> {
                             '${n['no_nota'] ?? '-'} \u2022 ${n['nopol'] ?? '-'} \u2022 ${n['sopir'] ?? '-'}',
                             style: const TextStyle(fontSize: 13)),
                         subtitle: Text(
-                            'Berat bersih: ${fmt(n['netto_bersih'])} kg \u2022 ${n['supplier'] ?? '-'}',
-                            style: const TextStyle(fontSize: 12)),
-                        onChanged: (v) => setD(() {
-                          if (v == true) {
-                            selected.add(n['id'] as int);
-                          } else {
-                            selected.remove(n['id']);
-                          }
-                        }),
+                            linkedElsewhere.containsKey(n['id'])
+                                ? '\u26a0 Sudah terhubung ke Blok ${linkedElsewhere[n['id']]} (hapus di blok itu dulu)'
+                                : 'Berat bersih: ${fmt(n['netto_bersih'])} kg \u2022 ${n['supplier'] ?? '-'}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: linkedElsewhere.containsKey(n['id'])
+                                  ? Colors.orange[800]
+                                  : Colors.grey[700],
+                            )),
+                        // tiket milik blok lain dikunci agar tidak dobel-link
+                        onChanged: linkedElsewhere.containsKey(n['id'])
+                            ? null
+                            : (v) => setD(() {
+                                  if (v == true) {
+                                    selected.add(n['id'] as int);
+                                  } else {
+                                    selected.remove(n['id']);
+                                  }
+                                }),
                       ),
                   ]),
           ),
@@ -890,11 +915,11 @@ class _PanenPageState extends State<PanenPage> {
       ),
     );
     if (ok == true) {
-      await DBHelper.linkTiket(p['id'] as int, selected.join(','));
+      await DBHelper.linkTiket(cur['id'] as int, selected.join(','));
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('${selected.length} tiket dihubungkan ke Blok ${p['blok']}.')));
+            content: Text('${selected.length} tiket dihubungkan ke Blok ${cur['blok']}.')));
       }
     }
   }
