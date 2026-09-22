@@ -266,6 +266,7 @@ class _HomePageState extends State<HomePage> {
     final potongan = TextEditingController(text: n.potongan?.toString() ?? '');
     final berat = TextEditingController(text: n.berat?.toString() ?? '');
     final noNota = TextEditingController(text: n.noNota);
+    final nopol = TextEditingController(text: n.nopol);
     final sopir = TextEditingController(text: n.sopir);
     final ok = await showDialog<bool>(
       context: context,
@@ -277,6 +278,8 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: nopol,
+                decoration: const InputDecoration(labelText: 'Nomor Polisi')),
             TextField(controller: sopir,
                 decoration: const InputDecoration(labelText: 'Nama Supir')),
             TextField(controller: bruto, keyboardType: TextInputType.number,
@@ -303,6 +306,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
+        n.nopol = nopol.text.isEmpty ? null : nopol.text;
         n.sopir = sopir.text.isEmpty ? null : sopir.text;
         n.bruto = double.tryParse(bruto.text);
         n.tara = double.tryParse(tara.text);
@@ -568,6 +572,7 @@ class _SavedPageState extends State<SavedPage> {
   Future<void> _editRow(Map<String, dynamic> m) async {
     final supplier = TextEditingController(text: m['supplier']?.toString());
     final noNota = TextEditingController(text: m['no_nota']?.toString());
+    final nopol = TextEditingController(text: m['nopol']?.toString());
     final sopir = TextEditingController(text: m['sopir']?.toString());
     final bruto = TextEditingController(text: m['bruto']?.toString());
     final tara = TextEditingController(text: m['tara']?.toString());
@@ -583,6 +588,8 @@ class _SavedPageState extends State<SavedPage> {
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: nopol,
+                decoration: const InputDecoration(labelText: 'Nomor Polisi')),
             TextField(controller: sopir,
                 decoration: const InputDecoration(labelText: 'Nama Supir')),
             TextField(controller: bruto, keyboardType: TextInputType.number,
@@ -611,6 +618,7 @@ class _SavedPageState extends State<SavedPage> {
       await DBHelper.update(m['id'] as int, {
         'supplier': supplier.text.isEmpty ? null : supplier.text,
         'no_nota': noNota.text,
+        'nopol': nopol.text.isEmpty ? null : nopol.text,
         'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
         'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
