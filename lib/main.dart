@@ -12,12 +12,52 @@ import 'nota_parser.dart';
 
 void main() => runApp(const MyApp());
 
+// ============================================================
+// PILIH TEMA TAMPILAN — cukup ganti angka PILIH_TEMA: 1 / 2 / 3 / 4
+//   1 = Hijau Sawit     : terang, klasik, seperti sekarang
+//   2 = Hijau Tua       : elegan/premium, AppBar hijau tua
+//   3 = Biru Profesional: netral formal, cocok untuk kantor
+//   4 = Dark Mode       : gelap, nyaman dipakai malam hari
+// ============================================================
+const int PILIH_TEMA = 1;
+
+ThemeData temaAplikasi(int pilihan) {
+  switch (pilihan) {
+    case 2: // Hijau Tua Elegan
+      return ThemeData(
+        colorSchemeSeed: const Color(0xFF1B5E20),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1B5E20),
+          foregroundColor: Colors.white,
+        ),
+      );
+    case 3: // Biru Profesional
+      return ThemeData(
+        colorSchemeSeed: Colors.indigo,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF283593),
+          foregroundColor: Colors.white,
+        ),
+      );
+    case 4: // Dark Mode
+      return ThemeData(
+        colorSchemeSeed: Colors.green,
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+    default: // 1 = Hijau Sawit
+      return ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true);
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Buslin Bross - Nota Timbang TBS',
-        theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
+        title: 'BUSLIN BROS - Aplikasi Tbs',
+        theme: temaAplikasi(PILIH_TEMA),
         home: const HomePage(),
         debugShowCheckedModeBanner: false,
       );
@@ -344,17 +384,21 @@ class _HomePageState extends State<HomePage> {
           textAlign: TextAlign.center));
     }
     return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Row(children: [
-          const Icon(Icons.table_chart, size: 18, color: Colors.green),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Rekap Tersimpan: $savedCount nota',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(
-                () {
+      Card(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        color: Colors.green[50],
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            const Icon(Icons.table_chart, size: 26, color: Colors.green),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Rekap Tersimpan: $savedCount nota',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                Text(
+                  () {
                   final totBerat = savedRows.fold<double>(0,
                       (a, m) => a + (m['netto_bersih'] as num? ?? 0));
                   final totJjg = panenRows.fold<double>(0,
@@ -362,13 +406,14 @@ class _HomePageState extends State<HomePage> {
                   final avg = totJjg > 0 ? totBerat / totJjg : null;
                   return 'Total: ${fmtNum(totBerat)} kg \u2022 '
                       'Panen ${fmtNum(totJjg)} jjg \u2022 '
-                      'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';
-                }(),
-                style: const TextStyle(fontSize: 12, color: Colors.black87),
-              ),
-            ]),
-          ),
-        ]),
+                      'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';}(),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
+                      color: Colors.black87),
+                ),
+              ]),
+            ),
+          ]),
+        ),
       ),
       const Divider(),
       Expanded(
@@ -418,9 +463,10 @@ class _HomePageState extends State<HomePage> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Buslin Bross'),
-            Text('Nota Timbang TBS',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text('BUSLIN BROS',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            Text('Aplikasi Tbs',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.normal)),
           ],
         ),
         actions: [
