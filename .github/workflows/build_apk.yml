@@ -1,9 +1,11 @@
+# Build APK Nota Timbang TBS otomatis di cloud (GitHub Actions)
+# Setiap Anda upload project ke GitHub, APK dibangun otomatis dalam ±10 menit.
 name: Build APK
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:   # bisa juga dijalankan manual dari tab Actions
 
 jobs:
   build:
@@ -16,21 +18,12 @@ jobs:
           flutter-version: '3.24.0'
           channel: 'stable'
 
-      # Buat scaffold Android otomatis (folder android/)
-      - run: flutter create --platforms android --project-name nota_tbs_app .
-
-      # Naikkan versi Kotlin agar kompatibel dengan Java 17 di server GitHub
-      - name: Fix Kotlin version
-        run: |
-          sed -i 's/org.jetbrains.kotlin.android" version "[0-9.]*"/org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
-          grep kotlin android/settings.gradle
-
       - run: flutter pub get
 
-      - run: flutter build apk --debug
+      - run: flutter build apk --release --obfuscate --split-debug-info=symbols
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nota-tbs-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: nota-tbs-apk-release
+          path: build/app/outputs/flutter-apk/app-release.apk
