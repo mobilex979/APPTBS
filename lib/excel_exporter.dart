@@ -10,6 +10,17 @@ import 'package:archive/archive.dart';
 const String KODE_AKSES = 'bros1234';
 
 class ExcelExporter {
+  // '2026-09-22' -> '22 September 2026'
+  static String tglPanjang(String iso) {
+    final p = iso.split('-');
+    if (p.length != 3) return iso;
+    const bln = ['Januari','Februari','Maret','April','Mei','Juni','Juli',
+        'Agustus','September','Oktober','November','Desember'];
+    final b = int.tryParse(p[1]);
+    final tgl = int.tryParse(p[2]) ?? 0;
+    return '$tgl ${b != null && b >= 1 && b <= 12 ? bln[b - 1] : p[1]} ${p[0]}';
+  }
+
   static final headers = ['Tanggal','No Nota','Supplier','Perusahaan/PKS','No Polisi','Sopir',
     'Bruto (kg)','Tara (kg)','Netto (kg)','Potongan','Netto Bersih (kg)',
     'Jml TBS/JJG','Blok','Catatan'];
@@ -24,7 +35,7 @@ class ExcelExporter {
   }
 
   static Future<File> export(List<Map<String, dynamic>> rows, String tanggal,
-      {List<Map<String, dynamic>>? panen}) async {
+      {List<Map<String, dynamic>>? panen, String? mandor}) async {
     final wb = Workbook();
     wb.worksheets.clear();
 
@@ -39,10 +50,19 @@ class ExcelExporter {
       }
     }
 
-    Worksheet fillSheet(String name, List<Map<String, dynamic>> data) {
+    Worksheet fillSheet(String name, List<Map<String, dynamic>> data,
+        {String? judul, String? subjudul}) {
       final ws = wb.worksheets.addWithName(_safe(name));
+      var hdrRow = 1;
+      if (judul != null) {
+        final j = ws.getRangeByIndex(1, 1);
+        j.setText(judul);
+        j.cellStyle.bold = true;
+        if (subjudul != null) ws.getRangeByIndex(2, 1).setText(subjudul);
+        hdrRow = 3;
+      }
       for (var c = 0; c < headers.length; c++) {
-        ws.getRangeByIndex(1, c + 1).setText(headers[c]);
+        ws.getRangeByIndex(hdrRow, c + 1).setText(headers[c]);
       }
       for (var r = 0; r < data.length; r++) {
         final m = data[r];
@@ -52,7 +72,7 @@ class ExcelExporter {
           m['jjg'], blokOf[m['id']] ?? '', m['catatan']
         ];
         for (var c = 0; c < vals.length; c++) {
-          final cell = ws.getRangeByIndex(r + 2, c + 1);
+          final cell = ws.getRangeByIndex(r + hdrRow + 1, c + 1);
           final v = vals[c];
           if (v is num) {
             cell.setNumber(v.toDouble());
@@ -64,7 +84,10 @@ class ExcelExporter {
       return ws;
     }
 
-    final wsSemua = fillSheet('SEMUA', rows);
+    final wsSemua = fillSheet('SEMUA', rows,
+        judul: 'REKAP NOTA TIMBANG TBS - BUSLIN BROS',
+        subjudul: 'Tanggal: ${tglPanjang(tanggal)}'
+            '${mandor != null && mandor.isNotEmpty ? ' - Mandor: $mandor' : ''}');
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (var m in rows) {
       grouped.putIfAbsent(m['supplier']?.toString() ?? 'TANPA_SUPPLIER', () => []).add(m);
@@ -78,7 +101,7 @@ class ExcelExporter {
         0, (a, m) => a + (m['jjg'] as num? ?? 0));
     final avg = totJjg > 0 ? totBerat / totJjg : null;
 
-    final r0 = rows.length + 3;
+    final r0 = rows.length + 5;
     wsSemua.getRangeByIndex(r0, 1).setText('REKAP TIMBANG vs PANEN');
     wsSemua.getRangeByIndex(r0 + 1, 1).setText('Total Berat Bersih (kg)');
     wsSemua.getRangeByIndex(r0 + 1, 2).setNumber(totBerat);
@@ -100,8 +123,13 @@ class ExcelExporter {
           'Keterangan', 'Waktu Input'];
       wsPanen = wb.worksheets.addWithName('PANEN');
       final ws = wsPanen!;
+      var panenHdr = 1;
+      if (mandor != null && mandor.isNotEmpty) {
+        ws.getRangeByIndex(1, 1).setText('PANEN - Mandor: $mandor');
+        panenHdr = 2;
+      }
       for (var c = 0; c < panenHeaders.length; c++) {
-        ws.getRangeByIndex(1, c + 1).setText(panenHeaders[c]);
+        ws.getRangeByIndex(panenHdr, c + 1).setText(panenHeaders[c]);
       }
       for (var r = 0; r < panen.length; r++) {
         final m = panen[r];
@@ -127,7 +155,7 @@ class ExcelExporter {
             tiketLabels.join(', '), beratLinked, avgBlok,
             m['keterangan'], m['created_at']];
         for (var c = 0; c < vals.length; c++) {
-          final cell = ws.getRangeByIndex(r + 2, c + 1);
+          final cell = ws.getRangeByIndex(r + panenHdr + 1, c + 1);
           final v = vals[c];
           if (v is num) {
             cell.setNumber(v.toDouble());
@@ -140,7 +168,8 @@ class ExcelExporter {
 
     // REKAP rata-rata kg/JJG juga di sheet PANEN
     if (wsPanen != null && rows.isNotEmpty) {
-      final rp = panen!.length + 3;
+      final rp = panen!.length +
+          ((mandor != null && mandor.isNotEmpty) ? 2 : 1) + 2;
       wsPanen.getRangeByIndex(rp, 1).setText('REKAP TIMBANG vs PANEN');
       wsPanen.getRangeByIndex(rp + 1, 1).setText('Total JJG Panen');
       wsPanen.getRangeByIndex(rp + 1, 3).setNumber(totJjg);
@@ -165,8 +194,8 @@ class ExcelExporter {
   }
 
   static Future<void> exportAndShare(List<Map<String, dynamic>> rows, String tanggal,
-      {List<Map<String, dynamic>>? panen}) async {
-    final f = await export(rows, tanggal, panen: panen);
+      {List<Map<String, dynamic>>? panen, String? mandor}) async {
+    final f = await export(rows, tanggal, panen: panen, mandor: mandor);
     // bungkus dalam ZIP berpassword — hanya yang tahu kode yang bisa buka
     final bytes = await f.readAsBytes();
     final archive = Archive();

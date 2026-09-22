@@ -316,11 +316,13 @@ class _HomePageState extends State<HomePage> {
     }
     final tgl = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final panen = await DBHelper.allPanen();
-    await ExcelExporter.exportAndShare(rows, tgl, panen: panen);
+    final mandor = await Profil.namaMandor();
+    await ExcelExporter.exportAndShare(rows, tgl, panen: panen, mandor: mandor);
   }
 
   Future<void> _edit(Nota n) async {
     final perusahaan = TextEditingController(text: n.perusahaan);
+    final tgl = TextEditingController(text: n.tanggal);
     final supplier = TextEditingController(text: n.supplier);
     final bruto = TextEditingController(text: n.bruto?.toString() ?? '');
     final tara = TextEditingController(text: n.tara?.toString() ?? '');
@@ -336,6 +338,8 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Cek / Edit Nota'),
         content: SingleChildScrollView(
           child: Column(children: [
+            TextField(controller: tgl,
+                decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
             TextField(controller: perusahaan,
                 decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
             TextField(controller: supplier,
@@ -368,6 +372,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (ok == true) {
       setState(() {
+        n.tanggal = tgl.text.trim().isEmpty ? null : tgl.text.trim();
         n.perusahaan = perusahaan.text.isEmpty ? null : perusahaan.text;
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
@@ -385,6 +390,39 @@ class _HomePageState extends State<HomePage> {
 
   // INPUT MANUAL (NEW): ketik data timbang tanpa kamera/galeri
   
+  // GANTI NAMA MANDOR HP INI
+  Future<void> _profilMandor() async {
+    final sekarang = await Profil.namaMandor();
+    final ctrl = TextEditingController(text: sekarang);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Profil Mandor HP Ini'),
+        content: TextField(
+          controller: ctrl,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+              labelText: 'Nama mandor penanggung jawab'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Simpan')),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().length >= 2) {
+      await Profil.simpanMandor(ctrl.text);
+      await _refreshCount();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Nama mandor diperbarui. Data berikutnya '
+                'memakai nama ini.')));
+      }
+    }
+  }
+
   // BUKA LAYAR PANEN + refresh home saat kembali
   Future<void> _bukaPanen() async {
     await Navigator.push(context,
@@ -497,14 +535,14 @@ class _HomePageState extends State<HomePage> {
               rows: [
                 for (final m in savedRows)
                   DataRow(cells: [
-                    DataCell(Text(m['no_nota']?.toString() ?? '-')),
-                    DataCell(Text(m['nopol']?.toString() ?? '-')),
-                    DataCell(Text(m['perusahaan']?.toString() ?? '-')),
-                    DataCell(Text(m['sopir']?.toString() ?? '-')),
-                    DataCell(Text(fmtNum(m['bruto']))),
-                    DataCell(Text(fmtNum(m['tara']))),
-                    DataCell(Text(fmtNum(m['potongan']))),
-                    DataCell(Text(fmtNum(m['netto_bersih']),
+                    DataCell(SelectableText(m['no_nota']?.toString() ?? '-')),
+                    DataCell(SelectableText(m['nopol']?.toString() ?? '-')),
+                    DataCell(SelectableText(m['perusahaan']?.toString() ?? '-')),
+                    DataCell(SelectableText(m['sopir']?.toString() ?? '-')),
+                    DataCell(SelectableText(fmtNum(m['bruto']))),
+                    DataCell(SelectableText(fmtNum(m['tara']))),
+                    DataCell(SelectableText(fmtNum(m['potongan']))),
+                    DataCell(SelectableText(fmtNum(m['netto_bersih']),
                         style: const TextStyle(fontWeight: FontWeight.bold))),
                   ]),
               ],
@@ -536,6 +574,12 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         actions: [
+          // PROFIL MANDOR HP INI (ganti nama bila berganti)
+          IconButton(
+            icon: const Icon(Icons.person),
+            tooltip: 'Profil mandor HP ini',
+            onPressed: _profilMandor,
+          ),
           // TOMBOL PANEN (janjang per blok)
           IconButton(
             icon: const Icon(Icons.park),
@@ -580,7 +624,7 @@ class _HomePageState extends State<HomePage> {
                       child: ListTile(
                         title: Text(
                             '${n.supplier ?? '(supplier kosong)'}${n.sudahAda ? '  \u26a0 SUDAH ADA' : ''}'),
-                        subtitle: Text(
+                        subtitle: SelectableText(
                           'Nota: ${n.noNota ?? '-'} | '
                           'Bruto: ${n.bruto ?? '-'} | Tara: ${n.tara ?? '-'} | '
                           'Netto: ${n.netto ?? '-'} kg',
@@ -593,9 +637,11 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+      bottomNavigationBar: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
             Expanded(child: FilledButton.icon(
                 onPressed: _dariKamera,
@@ -628,7 +674,9 @@ class _HomePageState extends State<HomePage> {
               label: const Text('New - Input Manual (tanpa kamera)'),
             ),
           ),
-        ]),
+            ]),
+          ),
+        ),
       ),
     );
   }
@@ -816,9 +864,9 @@ class _SavedPageState extends State<SavedPage> {
                                 : selected.remove(m['id'])),
                           )
                         : CircleAvatar(child: Text('${m['id']}')),
-                    title: Text('${m['supplier'] ?? '(tanpa supplier)'}',
+                    title: SelectableText('${m['supplier'] ?? '(tanpa supplier)'}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
+                    subtitle: SelectableText(
                       '${m['perusahaan'] ?? '-'} • Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
                       'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
                       'Netto: ${_fmt(m['netto'])} kg\n'
@@ -867,6 +915,9 @@ class _PanenPageState extends State<PanenPage> {
     super.initState();
     tanggal = TextEditingController(
         text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    Profil.namaMandor().then((m) {
+      if (m != null) mandor.text = m;
+    });
     _load();
   }
 
@@ -1041,7 +1092,7 @@ class _PanenPageState extends State<PanenPage> {
                         title: Text(
                             '${n['no_nota'] ?? '-'} \u2022 ${n['nopol'] ?? '-'} \u2022 ${n['sopir'] ?? '-'}',
                             style: const TextStyle(fontSize: 13)),
-                        subtitle: Text(
+                        subtitle: SelectableText(
                             linkedElsewhere.containsKey(n['id'])
                                 ? '\u26a0 Sudah terhubung ke Blok ${linkedElsewhere[n['id']]} (hapus di blok itu dulu)'
                                 : 'Berat bersih: ${fmt(n['netto_bersih'])} kg \u2022 ${n['supplier'] ?? '-'}',
@@ -1097,7 +1148,8 @@ class _PanenPageState extends State<PanenPage> {
       'tanggal': tanggal.text,
       'blok': blok.text.trim(),
       'jjg': j,
-      'mandor': mandor.text.trim().isEmpty ? null : mandor.text.trim(),
+      'mandor': await Profil.namaMandor() ??
+          (mandor.text.trim().isEmpty ? null : mandor.text.trim()),
       'keterangan': ket.text.trim().isEmpty ? null : ket.text.trim(),
     });
     blok.clear();
@@ -1185,8 +1237,9 @@ class _PanenPageState extends State<PanenPage> {
                 const SizedBox(width: 8),
                 Expanded(child: TextField(
                   controller: mandor,
+                  readOnly: true,
                   decoration: const InputDecoration(
-                      labelText: 'Mandor (ops.)', isDense: true),
+                      labelText: 'Mandor (terkunci HP ini)', isDense: true),
                 )),
               ]),
               const SizedBox(height: 8),
@@ -1249,9 +1302,9 @@ class _PanenPageState extends State<PanenPage> {
                                 child: Text('${m['jjg']}',
                                     style: const TextStyle(fontSize: 12)),
                               ),
-                        title: Text('Blok ${m['blok']}',
+                        title: SelectableText('Blok ${m['blok']}',
                             style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
+                        subtitle: SelectableText(
                             '${m['tanggal']}${m['mandor'] != null ? ' • Mandor: ${m['mandor']}' : ''}'
                             '${_tiketLabel(m)}'
                             '${_avgLabel(m)}'
@@ -1292,15 +1345,29 @@ class _PanenPageState extends State<PanenPage> {
 // ═══════════ PINTU GERBANG: cek lisensi sebelum masuk aplikasi ═══════════
 class Gate extends StatelessWidget {
   const Gate({super.key});
+
+  static Future<int> _status() async {
+    if (!await License.sudahAktif()) return 1;   // perlu aktivasi lisensi
+    if (await Profil.namaMandor() == null) return 2; // perlu nama mandor
+    return 3;                                    // lolos
+  }
+
   @override
-  Widget build(BuildContext context) => FutureBuilder<bool>(
-        future: License.sudahAktif(),
+  Widget build(BuildContext context) => FutureBuilder<int>(
+        future: _status(),
         builder: (ctx, snap) {
           if (!snap.hasData) {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
           }
-          return snap.data! ? const HomePage() : const LicensePage();
+          switch (snap.data!) {
+            case 1:
+              return const LicensePage();
+            case 2:
+              return const MandorPage();
+            default:
+              return const HomePage();
+          }
         },
       );
 }
@@ -1366,6 +1433,75 @@ class _LicensePageState extends State<LicensePage> {
                 label: const Text('Aktivasi'),
               ),
             ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════ SETUP MANDOR — HP dikunci untuk 1 mandor ═══════════
+class MandorPage extends StatefulWidget {
+  const MandorPage({super.key});
+  @override
+  State<MandorPage> createState() => _MandorPageState();
+}
+
+class _MandorPageState extends State<MandorPage> {
+  final nama = TextEditingController();
+
+  Future<void> _simpan() async {
+    if (nama.text.trim().length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Nama mandor minimal 2 huruf.')));
+      return;
+    }
+    await Profil.simpanMandor(nama.text);
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomePage()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.person_pin, size: 72, color: Colors.green),
+            const SizedBox(height: 12),
+            const Text('BUSLIN BROS',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            const Text(
+                'HP ini dikunci untuk SATU mandor penanggung jawab.\n'
+                'Semua data panen & export akan bertanda nama mandor ini.',
+                textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nama,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Nama Mandor / Penanggung Jawab',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _simpan,
+                icon: const Icon(Icons.save),
+                label: const Text('Simpan & Masuk'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('Nama bisa diganti lewat icon orang di halaman utama '
+                'jika mandor berganti.',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+                textAlign: TextAlign.center),
           ]),
         ),
       ),

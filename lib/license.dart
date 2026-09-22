@@ -60,3 +60,19 @@ class License {
     await p.remove(_keyKode);
   }
 }
+
+// ═══ PROFIL MANDOR PERANGKAT — HP dikunci untuk 1 mandor ═══
+class Profil {
+  static const String _keyMandor = 'nama_mandor';
+
+  static Future<String?> namaMandor() async {
+    final p = await SharedPreferences.getInstance();
+    final m = p.getString(_keyMandor);
+    return (m == null || m.trim().isEmpty) ? null : m.trim();
+  }
+
+  static Future<void> simpanMandor(String nama) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_keyMandor, nama.trim());
+  }
+}
