@@ -47,15 +47,13 @@ class _HomePageState extends State<HomePage> {
   String fmtNum(dynamic v) =>
       v == null ? '-' : NumberFormat('#,##0', 'id_ID').format(v);
 
-  Future<void> _loadSaved() async {
-    savedRows = await DBHelper.all();
-    panenRows = await DBHelper.allPanen();
-    if (mounted) setState(() {});
-  }
+  Future<void> _loadSaved() => _refreshCount();
 
   Future<void> _refreshCount() async {
     final c = await DBHelper.count();
-    setState(() => savedCount = c);
+    savedRows = await DBHelper.all();
+    panenRows = await DBHelper.allPanen();
+    if (mounted) setState(() => savedCount = c);
   }
 
   // Nilai kualitas hasil OCR: keyword nota + jumlah field berhasil diekstrak
@@ -181,6 +179,72 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // FORM INPUT MANUAL (tanpa kamera/galeri)
+  Future<void> _inputManual() async {
+    final tgl = TextEditingController(
+        text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    final noNota = TextEditingController();
+    final supplier = TextEditingController();
+    final nopol = TextEditingController();
+    final sopir = TextEditingController();
+    final bruto = TextEditingController();
+    final tara = TextEditingController();
+    final netto = TextEditingController();
+    final potongan = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Input Nota Manual'),
+        content: SingleChildScrollView(
+          child: Column(children: [
+            TextField(controller: tgl,
+                decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
+            TextField(controller: noNota,
+                decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: supplier,
+                decoration: const InputDecoration(labelText: 'Supplier / Relasi')),
+            TextField(controller: nopol,
+                decoration: const InputDecoration(labelText: 'Plat No')),
+            TextField(controller: sopir,
+                decoration: const InputDecoration(labelText: 'Nama Supir')),
+            TextField(controller: bruto, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Bruto (kg)')),
+            TextField(controller: tara, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Tara (kg)')),
+            TextField(controller: netto, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Netto (kg)')),
+            TextField(controller: potongan, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Potongan (kg)')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Tambah')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final n = Nota()
+        ..tanggal = tgl.text.trim().isEmpty ? null : tgl.text.trim()
+        ..noNota = noNota.text.trim().isEmpty ? null : noNota.text.trim()
+        ..supplier = supplier.text.trim().isEmpty ? null : supplier.text.trim()
+        ..nopol = nopol.text.trim().isEmpty ? null : nopol.text.trim()
+        ..sopir = sopir.text.trim().isEmpty ? null : sopir.text.trim()
+        ..bruto = double.tryParse(bruto.text)
+        ..tara = double.tryParse(tara.text)
+        ..netto = double.tryParse(netto.text)
+        ..potongan = double.tryParse(potongan.text)
+        ..catatan = 'INPUT MANUAL';
+      setState(() => draft.add(n));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Nota manual ditambahkan ke daftar. Klik Simpan untuk menyimpan.')));
+      }
+    }
+  }
+
   Future<void> _exportExcel() async {
     final rows = await DBHelper.all();
     if (rows.isEmpty) {
@@ -245,7 +309,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // BUKA LAYAR REVIEW DATA TERSIMPAN
+  // INPUT MANUAL (NEW): ketik data timbang tanpa kamera/galeri
+  
   Future<void> _bukaDataTersimpan() async {
     await Navigator.push(
       context,
@@ -424,6 +489,15 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.table_chart),
                 label: const Text('Export Excel'))),
           ]),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: _inputManual,
+              icon: const Icon(Icons.edit_note),
+              label: const Text('New - Input Manual (tanpa kamera)'),
+            ),
+          ),
         ]),
       ),
     );
@@ -453,6 +527,33 @@ class _SavedPageState extends State<SavedPage> {
 
   String _fmt(dynamic v) => v == null ? '-' : v.toString();
 
+  bool selectMode = false;
+  final Set<int> selected = {};
+
+  Future<void> _hapusTerpilih() async {
+    if (selected.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus ${selected.length} nota terpilih?'),
+        content: const Text('Data yang dihapus tidak bisa dikembalikan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      for (final id in selected) {
+        await DBHelper.delete(id);
+      }
+      setState(() { selected.clear(); selectMode = false; });
+      await _load();
+    }
+  }
+
   Future<void> _editRow(Map<String, dynamic> m) async {
     final supplier = TextEditingController(text: m['supplier']?.toString());
     final noNota = TextEditingController(text: m['no_nota']?.toString());
@@ -461,7 +562,6 @@ class _SavedPageState extends State<SavedPage> {
     final tara = TextEditingController(text: m['tara']?.toString());
     final netto = TextEditingController(text: m['netto']?.toString());
     final berat = TextEditingController(text: m['netto_bersih']?.toString());
-    final harga = TextEditingController(text: m['harga']?.toString());
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -482,8 +582,6 @@ class _SavedPageState extends State<SavedPage> {
                 decoration: const InputDecoration(labelText: 'Netto (kg)')),
             TextField(controller: berat, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Berat Bersih (kg)')),
-            TextField(controller: harga, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Harga/kg')),
           ]),
         ),
         actions: [
@@ -499,15 +597,12 @@ class _SavedPageState extends State<SavedPage> {
       final t = double.tryParse(tara.text);
       final n = double.tryParse(netto.text);
       final bb = double.tryParse(berat.text);
-      final h = double.tryParse(harga.text);
       await DBHelper.update(m['id'] as int, {
         'supplier': supplier.text.isEmpty ? null : supplier.text,
         'no_nota': noNota.text,
         'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
         'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
-        'harga': h,
-        'total': (bb != null && h != null) ? bb * h : null,
       });
       await _load();
       if (mounted) {
@@ -540,7 +635,27 @@ class _SavedPageState extends State<SavedPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Data Tersimpan - Review & Edit')),
+      appBar: AppBar(
+        title: Text(selectMode
+            ? 'Terpilih: ${selected.length}'
+            : 'Data Tersimpan - Review & Edit'),
+        actions: [
+          IconButton(
+            icon: Icon(selectMode ? Icons.close : Icons.checklist),
+            tooltip: selectMode ? 'Batal pilih' : 'Pilih beberapa untuk dihapus',
+            onPressed: () => setState(() {
+              selectMode = !selectMode;
+              selected.clear();
+            }),
+          ),
+          if (selectMode && selected.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, color: Colors.red),
+              tooltip: 'Hapus terpilih',
+              onPressed: _hapusTerpilih,
+            ),
+        ],
+      ),
       body: rows.isEmpty
           ? const Center(child: Text('Belum ada data tersimpan.'))
           : ListView.builder(
@@ -550,15 +665,26 @@ class _SavedPageState extends State<SavedPage> {
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: ListTile(
-                    leading: CircleAvatar(child: Text('${m['id']}')),
+                    onTap: selectMode
+                        ? () => setState(() => selected.contains(m['id'])
+                            ? selected.remove(m['id'])
+                            : selected.add(m['id'] as int))
+                        : null,
+                    leading: selectMode
+                        ? Checkbox(
+                            value: selected.contains(m['id']),
+                            onChanged: (v) => setState(() => v == true
+                                ? selected.add(m['id'] as int)
+                                : selected.remove(m['id'])),
+                          )
+                        : CircleAvatar(child: Text('${m['id']}')),
                     title: Text('${m['supplier'] ?? '(tanpa supplier)'}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(
                       'Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
                       'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
                       'Netto: ${_fmt(m['netto'])} kg\n'
-                      'Berat bersih: ${_fmt(m['netto_bersih'])} kg • '
-                      'Harga: ${_fmt(m['harga'])} • Total: ${_fmt(m['total'])}',
+                      'Berat bersih: ${_fmt(m['netto_bersih'])} kg ',
                     ),
                     isThreeLine: true,
                     trailing: Wrap(spacing: 4, children: [
@@ -595,6 +721,8 @@ class _PanenPageState extends State<PanenPage> {
   late final TextEditingController tanggal;
   List<Map<String, dynamic>> rows = [];
   List<Map<String, dynamic>> notaRows = [];
+  bool selectMode = false;
+  final Set<int> selected = {};
 
   @override
   void initState() {
@@ -611,6 +739,85 @@ class _PanenPageState extends State<PanenPage> {
     rows = await DBHelper.allPanen();
     notaRows = await DBHelper.all();
     if (mounted) setState(() {});
+  }
+
+  // edit data panen setelah tersimpan (blok, janjang, dll.)
+  Future<void> _editPanen(Map<String, dynamic> p) async {
+    final tgl = TextEditingController(text: p['tanggal']?.toString());
+    final blokC = TextEditingController(text: p['blok']?.toString());
+    final jjgC = TextEditingController(text: p['jjg']?.toString());
+    final mandorC = TextEditingController(text: p['mandor']?.toString());
+    final ketC = TextEditingController(text: p['keterangan']?.toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Panen #${p['id']}'),
+        content: SingleChildScrollView(
+          child: Column(children: [
+            TextField(controller: tgl,
+                decoration: const InputDecoration(labelText: 'Tanggal')),
+            TextField(controller: blokC,
+                decoration: const InputDecoration(labelText: 'Blok')),
+            TextField(controller: jjgC, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Jml Janjang')),
+            TextField(controller: mandorC,
+                decoration: const InputDecoration(labelText: 'Mandor')),
+            TextField(controller: ketC,
+                decoration: const InputDecoration(labelText: 'Keterangan')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Simpan')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final j = double.tryParse(jjgC.text);
+      if (blokC.text.trim().isEmpty || j == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Blok dan Jml Janjang wajib diisi.')));
+        return;
+      }
+      await DBHelper.updatePanen(p['id'] as int, {
+        'tanggal': tgl.text,
+        'blok': blokC.text.trim(),
+        'jjg': j,
+        'mandor': mandorC.text.trim().isEmpty ? null : mandorC.text.trim(),
+        'keterangan': ketC.text.trim().isEmpty ? null : ketC.text.trim(),
+      });
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Data panen diperbarui.')));
+      }
+    }
+  }
+
+  Future<void> _hapusTerpilih() async {
+    if (selected.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus ${selected.length} data panen terpilih?'),
+        content: const Text('Data yang dihapus tidak bisa dikembalikan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      for (final id in selected) {
+        await DBHelper.deletePanen(id);
+      }
+      setState(() { selected.clear(); selectMode = false; });
+      await _load();
+    }
   }
 
   List<int> _linkedIds(Map<String, dynamic> p) =>
@@ -742,7 +949,27 @@ class _PanenPageState extends State<PanenPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Panen - Janjang per Blok')),
+      appBar: AppBar(
+        title: Text(selectMode
+            ? 'Terpilih: ${selected.length}'
+            : 'Panen - Janjang per Blok'),
+        actions: [
+          IconButton(
+            icon: Icon(selectMode ? Icons.close : Icons.checklist),
+            tooltip: selectMode ? 'Batal pilih' : 'Pilih beberapa untuk dihapus',
+            onPressed: () => setState(() {
+              selectMode = !selectMode;
+              selected.clear();
+            }),
+          ),
+          if (selectMode && selected.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, color: Colors.red),
+              tooltip: 'Hapus terpilih',
+              onPressed: _hapusTerpilih,
+            ),
+        ],
+      ),
       body: Column(children: [
         // ── FORM INPUT ──
         Card(
@@ -820,12 +1047,24 @@ class _PanenPageState extends State<PanenPage> {
                           horizontal: 12, vertical: 4),
                       child: ListTile(
                         dense: true,
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          child: Text('${m['jjg']}',
-                              style: const TextStyle(fontSize: 12)),
-                        ),
+                        onTap: selectMode
+                            ? () => setState(() => selected.contains(m['id'])
+                                ? selected.remove(m['id'])
+                                : selected.add(m['id'] as int))
+                            : null,
+                        leading: selectMode
+                            ? Checkbox(
+                                value: selected.contains(m['id']),
+                                onChanged: (v) => setState(() => v == true
+                                    ? selected.add(m['id'] as int)
+                                    : selected.remove(m['id'])),
+                              )
+                            : CircleAvatar(
+                                backgroundColor: Colors.green[700],
+                                foregroundColor: Colors.white,
+                                child: Text('${m['jjg']}',
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
                         title: Text('Blok ${m['blok']}',
                             style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text(
@@ -833,19 +1072,28 @@ class _PanenPageState extends State<PanenPage> {
                             '${_tiketLabel(m)}'
                             '${m['keterangan'] != null ? '\n${m['keterangan']}' : ''}'),
                         isThreeLine: true,
-                        trailing: Wrap(spacing: 2, children: [
-                          IconButton(
-                            icon: const Icon(Icons.link, size: 20,
-                                color: Colors.blue),
-                            tooltip: 'Hubungkan tiket timbang',
-                            onPressed: () => _linkTiket(m),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, size: 20,
-                                color: Colors.red),
-                            onPressed: () => _hapus(m),
-                          ),
-                        ]),
+                        trailing: selectMode
+                            ? null
+                            : Wrap(spacing: 2, children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20,
+                                      color: Colors.orange),
+                                  tooltip: 'Edit data panen',
+                                  onPressed: () => _editPanen(m),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.link, size: 20,
+                                      color: Colors.blue),
+                                  tooltip: 'Hubungkan tiket timbang',
+                                  onPressed: () => _linkTiket(m),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, size: 20,
+                                      color: Colors.red),
+                                  tooltip: 'Hapus',
+                                  onPressed: () => _hapus(m),
+                                ),
+                              ]),
                       ),
                     );
                   },

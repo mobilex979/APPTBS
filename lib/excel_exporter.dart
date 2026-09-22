@@ -7,7 +7,7 @@ import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 class ExcelExporter {
   static final headers = ['Tanggal','No Nota','Supplier','No Polisi','Sopir',
     'Bruto (kg)','Tara (kg)','Netto (kg)','Potongan','Netto Bersih (kg)',
-    'Jml TBS/JJG','Blok','Harga/kg','Total (Rp)','Catatan'];
+    'Jml TBS/JJG','Blok','Catatan'];
 
   static String _safe(String s) {
     for (var ch in ['[', ']', ':', '*', '?', '/', '\\']) {
@@ -44,7 +44,7 @@ class ExcelExporter {
         final vals = [
           m['tanggal'], m['no_nota'], m['supplier'], m['nopol'], m['sopir'],
           m['bruto'], m['tara'], m['netto'], m['potongan'], m['netto_bersih'],
-          m['jjg'], blokOf[m['id']] ?? '', m['harga'], m['total'], m['catatan']
+          m['jjg'], blokOf[m['id']] ?? '', m['catatan']
         ];
         for (var c = 0; c < vals.length; c++) {
           final cell = ws.getRangeByIndex(r + 2, c + 1);

@@ -73,6 +73,12 @@ class DBHelper {
     return (await db).query('panen', orderBy: 'id DESC');
   }
 
+  static Future<int> updatePanen(int id, Map<String, dynamic> values) async {
+    await _ensurePanen();
+    return (await db).update('panen', values,
+        where: 'id = ?', whereArgs: [id]);
+  }
+
   static Future<int> deletePanen(int id) async {
     await _ensurePanen();
     return (await db).delete('panen', where: 'id = ?', whereArgs: [id]);
