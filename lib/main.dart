@@ -33,11 +33,22 @@ class _HomePageState extends State<HomePage> {
   final List<Nota> draft = [];   // hasil OCR yang belum disimpan
   bool loading = false;
   int savedCount = 0;
+  List<Map<String, dynamic>> savedRows = [];
 
   @override
   void initState() {
     super.initState();
     _refreshCount();
+    _loadSaved();
+  }
+
+  // format ribuan Indonesia: 8460 -> "8.460"
+  String fmtNum(dynamic v) =>
+      v == null ? '-' : NumberFormat('#,##0', 'id_ID').format(v);
+
+  Future<void> _loadSaved() async {
+    savedRows = await DBHelper.all();
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshCount() async {
@@ -119,6 +130,7 @@ class _HomePageState extends State<HomePage> {
     }
     setState(() => draft.clear());
     await _refreshCount();
+    await _loadSaved();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua nota tersimpan.')));
@@ -160,6 +172,7 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {}
 
     await _refreshCount();
+    await _loadSaved();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data & file Excel dihapus.')));
@@ -232,6 +245,63 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (_) => const SavedPage()),
     );
     await _refreshCount();
+    await _loadSaved();
+  }
+
+  // TABEL REKAP DATA TERSIMPAN di halaman utama
+  Widget _buildRekap() {
+    if (savedRows.isEmpty) {
+      return const Center(child: Text(
+          'Belum ada data. Ambil foto nota atau pilih banyak foto dari galeri.',
+          textAlign: TextAlign.center));
+    }
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Row(children: [
+          const Icon(Icons.table_chart, size: 18, color: Colors.green),
+          const SizedBox(width: 8),
+          Text('Rekap Tersimpan: $savedCount nota',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+        ]),
+      ),
+      const Divider(),
+      Expanded(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(Colors.green[50]),
+              columns: const [
+                DataColumn(label: Text('No Tiket')),
+                DataColumn(label: Text('Plat No')),
+                DataColumn(label: Text('Bruto'), numeric: true),
+                DataColumn(label: Text('Tarra'), numeric: true),
+                DataColumn(label: Text('Potongan'), numeric: true),
+                DataColumn(label: Text('Berat Bersih'), numeric: true),
+              ],
+              rows: [
+                for (final m in savedRows)
+                  DataRow(cells: [
+                    DataCell(Text(m['no_nota']?.toString() ?? '-')),
+                    DataCell(Text(m['nopol']?.toString() ?? '-')),
+                    DataCell(Text(fmtNum(m['bruto']))),
+                    DataCell(Text(fmtNum(m['tara']))),
+                    DataCell(Text(fmtNum(m['potongan']))),
+                    DataCell(Text(fmtNum(m['netto_bersih']),
+                        style: const TextStyle(fontWeight: FontWeight.bold))),
+                  ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+      const Padding(
+        padding: EdgeInsets.all(8),
+        child: Text('Klik "Tersimpan" di atas untuk review & edit detail',
+            style: TextStyle(fontSize: 11, color: Colors.grey)),
+      ),
+    ]);
   }
 
   @override
@@ -271,9 +341,7 @@ class _HomePageState extends State<HomePage> {
               Text('Membaca nota...'),
             ]))
           : draft.isEmpty
-              ? const Center(child: Text(
-                  'Ambil foto nota atau pilih banyak foto dari galeri.',
-                  textAlign: TextAlign.center))
+              ? _buildRekap()
               : ListView.builder(
                   itemCount: draft.length,
                   itemBuilder: (ctx, i) {
