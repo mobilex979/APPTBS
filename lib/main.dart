@@ -453,33 +453,33 @@ class _HomePageState extends State<HomePage> {
         final totJjg =
             panenRows.fold<double>(0, (a, m) => a + (m['jjg'] as num? ?? 0));
         final avg = totJjg > 0 ? totBerat / totJjg : null;
-        // rata-rata kg/JJG dipisah per mandor
+        // rata-rata kg/JJG dipisah per BLOK
         final beratOf = <int, double>{};
         for (final n in savedRows) {
           beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0).toDouble();
         }
-        final mandorBerat = <String, double>{};
-        final mandorJjg = <String, double>{};
+        final blokBerat = <String, double>{};
+        final blokJjg = <String, double>{};
         for (final p in panenRows) {
-          final m = (p['mandor'] == null || p['mandor'].toString().trim().isEmpty)
-              ? '(tanpa mandor)'
-              : p['mandor'].toString();
+          final bk = (p['blok']?.toString().trim().isNotEmpty == true)
+              ? p['blok'].toString()
+              : '(tanpa blok)';
           var b = 0.0;
           for (final tid in (p['tiket_ids']?.toString() ?? '').split(',')) {
             final id = int.tryParse(tid.trim());
             if (id != null && beratOf.containsKey(id)) b += beratOf[id]!;
           }
-          mandorBerat[m] = (mandorBerat[m] ?? 0.0) + b;
-          mandorJjg[m] = (mandorJjg[m] ?? 0.0) + ((p['jjg'] as num?) ?? 0).toDouble();
+          blokBerat[bk] = (blokBerat[bk] ?? 0.0) + b;
+          blokJjg[bk] = (blokJjg[bk] ?? 0.0) + ((p['jjg'] as num?) ?? 0).toDouble();
         }
-        final avgMandor = mandorJjg.entries
-            .where((e) => e.value > 0 && (mandorBerat[e.key] ?? 0) > 0)
+        final avgBlok = blokJjg.entries
+            .where((e) => e.value > 0 && (blokBerat[e.key] ?? 0) > 0)
             .map((e) =>
-                '${e.key}: ${(mandorBerat[e.key]! / e.value).toStringAsFixed(1)}')
+                '${e.key}: ${(blokBerat[e.key]! / e.value).toStringAsFixed(1)}')
             .join(' \u2022 ');
         final ringkasan = 'Rekap Tersimpan: $savedCount nota\n'
             'Total: ${fmtNum(totBerat)} kg \u2022 Panen ${fmtNum(totJjg)} jjg \u2022 Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG'
-            '${avgMandor.isNotEmpty ? '\nPer mandor: $avgMandor kg/JJG' : ''}';
+            '${avgBlok.isNotEmpty ? '\nPer blok: $avgBlok kg/JJG' : ''}';
         return Card(
           margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           color: Colors.green[50],
@@ -524,6 +524,7 @@ class _HomePageState extends State<HomePage> {
               headingRowColor: WidgetStateProperty.all(Colors.green[50]),
               columns: const [
                 DataColumn(label: Text('No Tiket')),
+                DataColumn(label: Text('Tanggal')),
                 DataColumn(label: Text('Plat No')),
                 DataColumn(label: Text('Perusahaan')),
                 DataColumn(label: Text('Supir')),
@@ -536,6 +537,12 @@ class _HomePageState extends State<HomePage> {
                 for (final m in savedRows)
                   DataRow(cells: [
                     DataCell(SelectableText(m['no_nota']?.toString() ?? '-')),
+                    DataCell(SelectableText(() {
+                      final t = m['tanggal']?.toString();
+                      return (t != null && t.contains('-'))
+                          ? t.split('-').reversed.join('-')
+                          : (t ?? '-');
+                    }())),
                     DataCell(SelectableText(m['nopol']?.toString() ?? '-')),
                     DataCell(SelectableText(m['perusahaan']?.toString() ?? '-')),
                     DataCell(SelectableText(m['sopir']?.toString() ?? '-')),
@@ -603,7 +610,10 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: loading
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: loading
           ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               CircularProgressIndicator(),
               SizedBox(height: 12),
@@ -637,6 +647,7 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
+        ),
       bottomNavigationBar: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -842,7 +853,10 @@ class _SavedPageState extends State<SavedPage> {
             ),
         ],
       ),
-      body: rows.isEmpty
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: rows.isEmpty
           ? const Center(child: Text('Belum ada data tersimpan.'))
           : ListView.builder(
               itemCount: rows.length,
@@ -888,6 +902,7 @@ class _SavedPageState extends State<SavedPage> {
                 );
               },
             ),
+        ),
     );
   }
 }
@@ -1206,7 +1221,10 @@ class _PanenPageState extends State<PanenPage> {
             ),
         ],
       ),
-      body: Column(children: [
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: Column(children: [
         // ── FORM INPUT ──
         Card(
           margin: const EdgeInsets.all(12),
@@ -1338,6 +1356,7 @@ class _PanenPageState extends State<PanenPage> {
                 ),
         ),
       ]),
+        ),
     );
   }
 }
