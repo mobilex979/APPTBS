@@ -79,6 +79,37 @@ class DBHelper {
     return (await db).query('panen', orderBy: 'id DESC');
   }
 
+  // ═══ BACKUP & RESTORE (pindah HP / reinstall tanpa kehilangan data) ═══
+  static Future<Map<String, dynamic>> backupAll() async {
+    await _ensurePanen();
+    final dbx = await db;
+    return {
+      'versi': 1,
+      'aplikasi': 'BUSLIN BROS - Nota Timbang TBS',
+      'waktu': DateTime.now().toIso8601String(),
+      'nota': await dbx.query('nota'),
+      'panen': await dbx.query('panen'),
+    };
+  }
+
+  // id ikut dipulihkan agar link tiket_ids <-> nota tetap utuh
+  static Future<int> restoreAll(Map<String, dynamic> data) async {
+    await _ensurePanen();
+    final dbx = await db;
+    await dbx.delete('nota');
+    await dbx.delete('panen');
+    var n = 0;
+    for (final row in (data['nota'] as List? ?? const [])) {
+      await dbx.insert('nota', Map<String, dynamic>.from(row));
+      n++;
+    }
+    for (final row in (data['panen'] as List? ?? const [])) {
+      await dbx.insert('panen', Map<String, dynamic>.from(row));
+      n++;
+    }
+    return n;
+  }
+
   // daftar nomor tiket yang sudah tersimpan (untuk screening anti-double)
   static Future<Set<String>> noTiketTersimpan() async {
     final r = await (await db).query('nota', columns: ['no_nota']);

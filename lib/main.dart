@@ -1,11 +1,14 @@
 // Aplikasi Buslin Bross - Nota Timbang TBS (layar utama)
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:image/image.dart' as img;
 import 'db_helper.dart';
 import 'license.dart';
@@ -390,6 +393,61 @@ class _HomePageState extends State<HomePage> {
 
   // INPUT MANUAL (NEW): ketik data timbang tanpa kamera/galeri
   
+  // BACKUP seluruh data (nota + panen) ke file JSON -> share ke WA/email
+  Future<void> _backup() async {
+    try {
+      final data = await DBHelper.backupAll();
+      final dir = await getExternalStorageDirectory()
+          ?? await getApplicationDocumentsDirectory();
+      final tgl = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final f = File('${dir.path}/backup_buslin_$tgl.json');
+      await f.writeAsString(jsonEncode(data), flush: true);
+      await Share.shareXFiles([XFile(f.path)],
+          text: 'Backup data BUSLIN BROS ($tgl). Simpan baik-baik untuk restore.');
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Backup gagal: $e')));
+    }
+  }
+
+  // RESTORE data dari file backup (.json)
+  Future<void> _restore() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore Data?'),
+        content: const Text('Seluruh data saat ini akan DIGANTI dengan isi '
+            'file backup. Lanjutkan?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restore')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final res = await FilePicker.platform.pickFiles(
+          type: FileType.custom, allowedExtensions: ['json']);
+      final path = res?.files.single.path;
+      if (path == null) return;
+      final data =
+          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
+      final n = await DBHelper.restoreAll(data);
+      await _refreshCount();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Restore berhasil: $n baris dipulihkan.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Restore gagal: $e')));
+      }
+    }
+  }
+
   // GANTI NAMA MANDOR HP INI
   Future<void> _profilMandor() async {
     final sekarang = await Profil.namaMandor();
@@ -581,6 +639,20 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         actions: [
+          // MENU BACKUP / RESTORE
+          PopupMenuButton<String>(
+            tooltip: 'Menu',
+            onSelected: (v) {
+              if (v == 'backup') _backup();
+              if (v == 'restore') _restore();
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                  value: 'backup', child: Text('\ud83d\udcbe Backup Data')),
+              PopupMenuItem(
+                  value: 'restore', child: Text('\ud83d\udce5 Restore Data')),
+            ],
+          ),
           // PROFIL MANDOR HP INI (ganti nama bila berganti)
           IconButton(
             icon: const Icon(Icons.person),
@@ -639,10 +711,18 @@ class _HomePageState extends State<HomePage> {
                           'Bruto: ${n.bruto ?? '-'} | Tara: ${n.tara ?? '-'} | '
                           'Netto: ${n.netto ?? '-'} kg',
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _edit(n),
-                        ),
+                        trailing: Wrap(spacing: 4, children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _edit(n),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete,
+                                size: 20, color: Colors.red),
+                            tooltip: 'Buang dari daftar',
+                            onPressed: () => setState(() => draft.remove(n)),
+                          ),
+                        ]),
                       ),
                     );
                   },
