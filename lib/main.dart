@@ -187,7 +187,8 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     final tgl = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await ExcelExporter.exportAndShare(rows, tgl);
+    final panen = await DBHelper.allPanen();
+    await ExcelExporter.exportAndShare(rows, tgl, panen: panen);
   }
 
   Future<void> _edit(Nota n) async {
@@ -317,6 +318,13 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         actions: [
+          // TOMBOL PANEN (janjang per blok)
+          IconButton(
+            icon: const Icon(Icons.park),
+            tooltip: 'Panen - janjang per blok',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const PanenPage())),
+          ),
           // TOMBOL HAPUS SEMUA DATA + FILE EXCEL
           IconButton(
             icon: const Icon(Icons.delete_forever),
@@ -539,6 +547,192 @@ class _SavedPageState extends State<SavedPage> {
                 );
               },
             ),
+    );
+  }
+}
+
+// ═══════════ LAYAR PANEN: input janjang per blok sebelum loading ═══════════
+class PanenPage extends StatefulWidget {
+  const PanenPage({super.key});
+  @override
+  State<PanenPage> createState() => _PanenPageState();
+}
+
+class _PanenPageState extends State<PanenPage> {
+  final blok = TextEditingController();
+  final jjg = TextEditingController();
+  final mandor = TextEditingController();
+  final ket = TextEditingController();
+  late final TextEditingController tanggal;
+  List<Map<String, dynamic>> rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    tanggal = TextEditingController(
+        text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    _load();
+  }
+
+  String fmt(dynamic v) =>
+      v == null ? '-' : NumberFormat('#,##0', 'id_ID').format(v);
+
+  Future<void> _load() async {
+    rows = await DBHelper.allPanen();
+    if (mounted) setState(() {});
+  }
+
+  double get totalJjg =>
+      rows.fold(0.0, (a, m) => a + (m['jjg'] as num? ?? 0));
+
+  Future<void> _simpan() async {
+    final j = double.tryParse(jjg.text);
+    if (blok.text.trim().isEmpty || j == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Blok dan Jumlah Janjang wajib diisi.')));
+      return;
+    }
+    await DBHelper.insertPanen({
+      'tanggal': tanggal.text,
+      'blok': blok.text.trim(),
+      'jjg': j,
+      'mandor': mandor.text.trim().isEmpty ? null : mandor.text.trim(),
+      'keterangan': ket.text.trim().isEmpty ? null : ket.text.trim(),
+    });
+    blok.clear();
+    jjg.clear();
+    ket.clear();
+    await _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Data panen tersimpan.')));
+    }
+  }
+
+  Future<void> _hapus(Map<String, dynamic> m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus Blok ${m['blok']}?'),
+        content: Text('${fmt(m['jjg'])} jjg • ${m['tanggal']}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await DBHelper.deletePanen(m['id'] as int);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Panen - Janjang per Blok')),
+      body: Column(children: [
+        // ── FORM INPUT ──
+        Card(
+          margin: const EdgeInsets.all(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(children: [
+              Row(children: [
+                Expanded(child: TextField(
+                  controller: tanggal,
+                  decoration: const InputDecoration(
+                      labelText: 'Tanggal', isDense: true),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(
+                  controller: blok,
+                  decoration: const InputDecoration(
+                      labelText: 'Blok *', isDense: true),
+                )),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: TextField(
+                  controller: jjg,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Jml Janjang *', isDense: true),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(
+                  controller: mandor,
+                  decoration: const InputDecoration(
+                      labelText: 'Mandor (ops.)', isDense: true),
+                )),
+              ]),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ket,
+                decoration: const InputDecoration(
+                    labelText: 'Keterangan (ops.)', isDense: true),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _simpan,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Simpan Panen'),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        // ── REKAP ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: [
+            const Icon(Icons.forest, size: 18, color: Colors.green),
+            const SizedBox(width: 8),
+            Text('Total: ${fmt(totalJjg)} jjg dari ${rows.length} blok',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ]),
+        ),
+        const Divider(),
+        // ── LIST ──
+        Expanded(
+          child: rows.isEmpty
+              ? const Center(child: Text('Belum ada data panen.'))
+              : ListView.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (ctx, i) {
+                    final m = rows[i];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      child: ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          child: Text('${m['jjg']}',
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                        title: Text('Blok ${m['blok']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                            '${m['tanggal']}${m['mandor'] != null ? ' • Mandor: ${m['mandor']}' : ''}'
+                            '${m['keterangan'] != null ? '\n${m['keterangan']}' : ''}'),
+                        isThreeLine: m['keterangan'] != null,
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, size: 20,
+                              color: Colors.red),
+                          onPressed: () => _hapus(m),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ]),
     );
   }
 }

@@ -38,4 +38,29 @@ class DBHelper {
 
   static Future<int> delete(int id) async =>
       (await db).delete('nota', where: 'id = ?', whereArgs: [id]);
+
+  // ═══ PANEN: janjang per blok (dilakukan di lapangan sebelum loading) ═══
+  static Future<void> _ensurePanen() async {
+    await (await db).execute(
+      'CREATE TABLE IF NOT EXISTS panen('
+      'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+      'tanggal TEXT, blok TEXT, jjg REAL, mandor TEXT,'
+      'keterangan TEXT,'
+      'created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+  }
+
+  static Future<int> insertPanen(Map<String, dynamic> m) async {
+    await _ensurePanen();
+    return (await db).insert('panen', m);
+  }
+
+  static Future<List<Map<String, dynamic>>> allPanen() async {
+    await _ensurePanen();
+    return (await db).query('panen', orderBy: 'id DESC');
+  }
+
+  static Future<int> deletePanen(int id) async {
+    await _ensurePanen();
+    return (await db).delete('panen', where: 'id = ?', whereArgs: [id]);
+  }
 }

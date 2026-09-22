@@ -18,7 +18,8 @@ class ExcelExporter {
     return s.length > 31 ? s.substring(0, 31) : s;
   }
 
-  static Future<File> export(List<Map<String, dynamic>> rows, String tanggal) async {
+  static Future<File> export(List<Map<String, dynamic>> rows, String tanggal,
+      {List<Map<String, dynamic>>? panen}) async {
     final wb = Workbook();
     wb.worksheets.clear();
 
@@ -36,10 +37,11 @@ class ExcelExporter {
         ];
         for (var c = 0; c < vals.length; c++) {
           final cell = ws.getRangeByIndex(r + 2, c + 1);
-          if (vals[c] is num) {
-            cell.setNumber((vals[c] as num).toDouble());
+          final v = vals[c];
+          if (v is num) {
+            cell.setNumber(v.toDouble());
           } else {
-            cell.setText(vals[c]?.toString() ?? '');
+            cell.setText(v?.toString() ?? '');
           }
         }
       }
@@ -52,6 +54,30 @@ class ExcelExporter {
     }
     grouped.forEach((s, list) => fillSheet(s, list));
 
+    // Sheet PANEN: janjang per blok (input di lapangan)
+    if (panen != null && panen.isNotEmpty) {
+      const panenHeaders = ['Tanggal', 'Blok', 'Jml Janjang', 'Mandor',
+          'Keterangan', 'Waktu Input'];
+      final ws = wb.worksheets.addWithName('PANEN');
+      for (var c = 0; c < panenHeaders.length; c++) {
+        ws.getRangeByIndex(1, c + 1).setText(panenHeaders[c]);
+      }
+      for (var r = 0; r < panen.length; r++) {
+        final m = panen[r];
+        final vals = [m['tanggal'], m['blok'], m['jjg'], m['mandor'],
+            m['keterangan'], m['created_at']];
+        for (var c = 0; c < vals.length; c++) {
+          final cell = ws.getRangeByIndex(r + 2, c + 1);
+          final v = vals[c];
+          if (v is num) {
+            cell.setNumber(v.toDouble());
+          } else {
+            cell.setText(v?.toString() ?? '');
+          }
+        }
+      }
+    }
+
     final bytes = wb.saveAsStream();
     wb.dispose();
     final dir = await getExternalStorageDirectory()
@@ -61,8 +87,9 @@ class ExcelExporter {
     return file;
   }
 
-  static Future<void> exportAndShare(List<Map<String, dynamic>> rows, String tanggal) async {
-    final f = await export(rows, tanggal);
+  static Future<void> exportAndShare(List<Map<String, dynamic>> rows, String tanggal,
+      {List<Map<String, dynamic>>? panen}) async {
+    final f = await export(rows, tanggal, panen: panen);
     await Share.shareXFiles([XFile(f.path)], text: 'Rekap Nota Timbang $tanggal');
   }
 }
