@@ -34,6 +34,7 @@ class _HomePageState extends State<HomePage> {
   bool loading = false;
   int savedCount = 0;
   List<Map<String, dynamic>> savedRows = [];
+  List<Map<String, dynamic>> panenRows = [];
 
   @override
   void initState() {
@@ -48,6 +49,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadSaved() async {
     savedRows = await DBHelper.all();
+    panenRows = await DBHelper.allPanen();
     if (mounted) setState(() {});
   }
 
@@ -198,6 +200,7 @@ class _HomePageState extends State<HomePage> {
     final netto = TextEditingController(text: n.netto?.toString() ?? '');
     final jjg = TextEditingController(text: n.jjg?.toString() ?? '');
     final noNota = TextEditingController(text: n.noNota);
+    final sopir = TextEditingController(text: n.sopir);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -208,6 +211,8 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: sopir,
+                decoration: const InputDecoration(labelText: 'Nama Supir')),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -230,6 +235,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
+        n.sopir = sopir.text.isEmpty ? null : sopir.text;
         n.bruto = double.tryParse(bruto.text);
         n.tara = double.tryParse(tara.text);
         n.netto = double.tryParse(netto.text);
@@ -262,8 +268,25 @@ class _HomePageState extends State<HomePage> {
         child: Row(children: [
           const Icon(Icons.table_chart, size: 18, color: Colors.green),
           const SizedBox(width: 8),
-          Text('Rekap Tersimpan: $savedCount nota',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Rekap Tersimpan: $savedCount nota',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                () {
+                  final totBerat = savedRows.fold<double>(0,
+                      (a, m) => a + (m['netto_bersih'] as num? ?? 0));
+                  final totJjg = panenRows.fold<double>(0,
+                      (a, m) => a + (m['jjg'] as num? ?? 0));
+                  final avg = totJjg > 0 ? totBerat / totJjg : null;
+                  return 'Total: ${fmtNum(totBerat)} kg \u2022 '
+                      'Panen ${fmtNum(totJjg)} jjg \u2022 '
+                      'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';
+                }(),
+                style: const TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+            ]),
+          ),
         ]),
       ),
       const Divider(),
@@ -276,6 +299,7 @@ class _HomePageState extends State<HomePage> {
               columns: const [
                 DataColumn(label: Text('No Tiket')),
                 DataColumn(label: Text('Plat No')),
+                DataColumn(label: Text('Supir')),
                 DataColumn(label: Text('Bruto'), numeric: true),
                 DataColumn(label: Text('Tarra'), numeric: true),
                 DataColumn(label: Text('Potongan'), numeric: true),
@@ -286,6 +310,7 @@ class _HomePageState extends State<HomePage> {
                   DataRow(cells: [
                     DataCell(Text(m['no_nota']?.toString() ?? '-')),
                     DataCell(Text(m['nopol']?.toString() ?? '-')),
+                    DataCell(Text(m['sopir']?.toString() ?? '-')),
                     DataCell(Text(fmtNum(m['bruto']))),
                     DataCell(Text(fmtNum(m['tara']))),
                     DataCell(Text(fmtNum(m['potongan']))),
@@ -431,6 +456,7 @@ class _SavedPageState extends State<SavedPage> {
   Future<void> _editRow(Map<String, dynamic> m) async {
     final supplier = TextEditingController(text: m['supplier']?.toString());
     final noNota = TextEditingController(text: m['no_nota']?.toString());
+    final sopir = TextEditingController(text: m['sopir']?.toString());
     final bruto = TextEditingController(text: m['bruto']?.toString());
     final tara = TextEditingController(text: m['tara']?.toString());
     final netto = TextEditingController(text: m['netto']?.toString());
@@ -446,6 +472,8 @@ class _SavedPageState extends State<SavedPage> {
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: sopir,
+                decoration: const InputDecoration(labelText: 'Nama Supir')),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -475,6 +503,7 @@ class _SavedPageState extends State<SavedPage> {
       await DBHelper.update(m['id'] as int, {
         'supplier': supplier.text.isEmpty ? null : supplier.text,
         'no_nota': noNota.text,
+        'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
         'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
         'harga': h,
@@ -525,7 +554,7 @@ class _SavedPageState extends State<SavedPage> {
                     title: Text('${m['supplier'] ?? '(tanpa supplier)'}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(
-                      'Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])}\n'
+                      'Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
                       'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
                       'Netto: ${_fmt(m['netto'])} kg\n'
                       'Berat bersih: ${_fmt(m['netto_bersih'])} kg • '
@@ -565,6 +594,7 @@ class _PanenPageState extends State<PanenPage> {
   final ket = TextEditingController();
   late final TextEditingController tanggal;
   List<Map<String, dynamic>> rows = [];
+  List<Map<String, dynamic>> notaRows = [];
 
   @override
   void initState() {
@@ -579,7 +609,87 @@ class _PanenPageState extends State<PanenPage> {
 
   Future<void> _load() async {
     rows = await DBHelper.allPanen();
+    notaRows = await DBHelper.all();
     if (mounted) setState(() {});
+  }
+
+  List<int> _linkedIds(Map<String, dynamic> p) =>
+      (p['tiket_ids']?.toString() ?? '')
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .whereType<int>()
+          .toList();
+
+  // label tiket terhubung untuk subtitle, contoh: "Tiket: 260921024, 260918095 (2)"
+  String _tiketLabel(Map<String, dynamic> p) {
+    final ids = _linkedIds(p);
+    if (ids.isEmpty) return '';
+    final labels = <String>[];
+    for (final id in ids) {
+      var label = '#$id';
+      for (final n in notaRows) {
+        if (n['id'] == id) {
+          label = n['no_nota']?.toString() ?? label;
+          break;
+        }
+      }
+      labels.add(label);
+    }
+    return '\n\u2693 Tiket: ${labels.join(', ')} (${ids.length})';
+  }
+
+  // dialog pilih nota timbang yang terhubung ke blok ini (bisa beberapa)
+  Future<void> _linkTiket(Map<String, dynamic> p) async {
+    final selected = _linkedIds(p).toSet();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text('Hubungkan Tiket \u2192 Blok ${p['blok']}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 360,
+            child: notaRows.isEmpty
+                ? const Text('Belum ada nota timbang tersimpan.\n'
+                    'Proses foto nota dulu, baru hubungkan ke blok.')
+                : ListView(children: [
+                    for (final n in notaRows)
+                      CheckboxListTile(
+                        dense: true,
+                        value: selected.contains(n['id']),
+                        title: Text(
+                            '${n['no_nota'] ?? '-'} \u2022 ${n['nopol'] ?? '-'} \u2022 ${n['sopir'] ?? '-'}',
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(
+                            'Berat bersih: ${fmt(n['netto_bersih'])} kg \u2022 ${n['supplier'] ?? '-'}',
+                            style: const TextStyle(fontSize: 12)),
+                        onChanged: (v) => setD(() {
+                          if (v == true) {
+                            selected.add(n['id'] as int);
+                          } else {
+                            selected.remove(n['id']);
+                          }
+                        }),
+                      ),
+                  ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Batal')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Simpan')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await DBHelper.linkTiket(p['id'] as int, selected.join(','));
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${selected.length} tiket dihubungkan ke Blok ${p['blok']}.')));
+      }
+    }
   }
 
   double get totalJjg =>
@@ -720,13 +830,22 @@ class _PanenPageState extends State<PanenPage> {
                             style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text(
                             '${m['tanggal']}${m['mandor'] != null ? ' • Mandor: ${m['mandor']}' : ''}'
+                            '${_tiketLabel(m)}'
                             '${m['keterangan'] != null ? '\n${m['keterangan']}' : ''}'),
-                        isThreeLine: m['keterangan'] != null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, size: 20,
-                              color: Colors.red),
-                          onPressed: () => _hapus(m),
-                        ),
+                        isThreeLine: true,
+                        trailing: Wrap(spacing: 2, children: [
+                          IconButton(
+                            icon: const Icon(Icons.link, size: 20,
+                                color: Colors.blue),
+                            tooltip: 'Hubungkan tiket timbang',
+                            onPressed: () => _linkTiket(m),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, size: 20,
+                                color: Colors.red),
+                            onPressed: () => _hapus(m),
+                          ),
+                        ]),
                       ),
                     );
                   },

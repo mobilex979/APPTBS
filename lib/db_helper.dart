@@ -41,12 +41,26 @@ class DBHelper {
 
   // ═══ PANEN: janjang per blok (dilakukan di lapangan sebelum loading) ═══
   static Future<void> _ensurePanen() async {
-    await (await db).execute(
+    final d = await db;
+    await d.execute(
       'CREATE TABLE IF NOT EXISTS panen('
       'id INTEGER PRIMARY KEY AUTOINCREMENT,'
       'tanggal TEXT, blok TEXT, jjg REAL, mandor TEXT,'
-      'keterangan TEXT,'
+      'keterangan TEXT, tiket_ids TEXT,'
       'created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    // migrasi untuk instal lama: tambah kolom tiket_ids kalau belum ada
+    final cols = await d.rawQuery('PRAGMA table_info(panen)');
+    final names = cols.map((c) => c['name'] as String).toList();
+    if (!names.contains('tiket_ids')) {
+      await d.execute('ALTER TABLE panen ADD COLUMN tiket_ids TEXT');
+    }
+  }
+
+  // simpan daftar id nota yang terhubung ke catatan panen (dipisah koma)
+  static Future<int> linkTiket(int panenId, String tiketIds) async {
+    await _ensurePanen();
+    return (await db).update('panen', {'tiket_ids': tiketIds},
+        where: 'id = ?', whereArgs: [panenId]);
   }
 
   static Future<int> insertPanen(Map<String, dynamic> m) async {
