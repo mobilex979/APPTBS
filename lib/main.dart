@@ -1,6 +1,7 @@
 // Aplikasi Buslin Bross - Nota Timbang TBS (layar utama)
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -384,37 +385,50 @@ class _HomePageState extends State<HomePage> {
           textAlign: TextAlign.center));
     }
     return Column(children: [
-      Card(
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-        color: Colors.green[50],
-        elevation: 2,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(children: [
-            const Icon(Icons.table_chart, size: 26, color: Colors.green),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Rekap Tersimpan: $savedCount nota',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-                Text(
-                  () {
-                  final totBerat = savedRows.fold<double>(0,
-                      (a, m) => a + (m['netto_bersih'] as num? ?? 0));
-                  final totJjg = panenRows.fold<double>(0,
-                      (a, m) => a + (m['jjg'] as num? ?? 0));
-                  final avg = totJjg > 0 ? totBerat / totJjg : null;
-                  return 'Total: ${fmtNum(totBerat)} kg \u2022 '
-                      'Panen ${fmtNum(totJjg)} jjg \u2022 '
-                      'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';}(),
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
-                      color: Colors.black87),
-                ),
-              ]),
-            ),
-          ]),
-        ),
-      ),
+      () {
+        final totBerat = savedRows.fold<double>(
+            0, (a, m) => a + (m['netto_bersih'] as num? ?? 0));
+        final totJjg =
+            panenRows.fold<double>(0, (a, m) => a + (m['jjg'] as num? ?? 0));
+        final avg = totJjg > 0 ? totBerat / totJjg : null;
+        final ringkasan = 'Rekap Tersimpan: $savedCount nota\n'
+            'Total: ${fmtNum(totBerat)} kg \u2022 Panen ${fmtNum(totJjg)} jjg \u2022 '
+            'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';
+        return Card(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          color: Colors.green[50],
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              const Icon(Icons.table_chart, size: 26, color: Colors.green),
+              const SizedBox(width: 10),
+              Expanded(
+                child:
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SelectableText('Rekap Tersimpan: $savedCount nota',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 17)),
+                  SelectableText(ringkasan.split('\n').last,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87)),
+                ]),
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, size: 20, color: Colors.green),
+                tooltip: 'Salin rekap ke clipboard',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: ringkasan));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Rekap tersalin. Tempel di WA/email.')));
+                },
+              ),
+            ]),
+          ),
+        );
+      }(),
       const Divider(),
       Expanded(
         child: SingleChildScrollView(
