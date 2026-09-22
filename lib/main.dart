@@ -9,17 +9,108 @@ import 'package:image/image.dart' as img;
 import 'db_helper.dart';
 import 'excel_exporter.dart';
 import 'nota_parser.dart';
+import 'license.dart';
 
-void main() => runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final aktif = await License.sudahAktif();
+  runApp(MyApp(aktif: aktif));
+}
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.aktif});
+  final bool aktif;
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Buslin Bross - Nota Timbang TBS',
         theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
-        home: const HomePage(),
+        home: aktif ? const HomePage() : const LicensePage(),
+        debugShowCheckedModeBanner: false,
       );
+}
+
+// ═══════════ LAYAR AKTIVASI LISENSI (muncul saat pertama install / lisensi habis) ═══════════
+class LicensePage extends StatefulWidget {
+  const LicensePage({super.key});
+  @override
+  State<LicensePage> createState() => _LicensePageState();
+}
+
+class _LicensePageState extends State<LicensePage> {
+  final key = TextEditingController();
+  bool loading = false;
+
+  Future<void> _aktivasi() async {
+    setState(() => loading = true);
+    final ok = await License.simpan(key.text);
+    setState(() => loading = false);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (_) => const HomePage()));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text('Kode lisensi salah atau sudah kedaluwarsa. '
+              'Hubungi admin untuk kode baru.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(children: [
+              const Icon(Icons.verified_user, size: 72, color: Colors.green),
+              const SizedBox(height: 16),
+              const Text('Buslin Bross',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text('Aplikasi Nota Timbang TBS',
+                  style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 32),
+              const Text('Aplikasi memerlukan kode lisensi untuk diaktifkan.',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              TextField(
+                controller: key,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Kode Lisensi',
+                  hintText: 'BBTBS-2026-XXXXXXXX',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.key),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: loading ? null : _aktivasi,
+                  icon: loading
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.lock_open),
+                  label: const Text('AKTIVASI'),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Lisensi berlaku sampai akhir tahun pada kode.\n'
+                'Untuk kode lisensi hubungi pemilik aplikasi.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -262,7 +353,8 @@ class _HomePageState extends State<HomePage> {
     final bruto = TextEditingController(text: n.bruto?.toString() ?? '');
     final tara = TextEditingController(text: n.tara?.toString() ?? '');
     final netto = TextEditingController(text: n.netto?.toString() ?? '');
-    final jjg = TextEditingController(text: n.jjg?.toString() ?? '');
+    final potongan = TextEditingController(text: n.potongan?.toString() ?? '');
+    final berat = TextEditingController(text: n.berat?.toString() ?? '');
     final noNota = TextEditingController(text: n.noNota);
     final sopir = TextEditingController(text: n.sopir);
     final ok = await showDialog<bool>(
@@ -283,8 +375,10 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Tara (kg)')),
             TextField(controller: netto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Netto (kg)')),
-            TextField(controller: jjg, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Jml TBS/JJG')),
+            TextField(controller: potongan, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Potongan (kg)')),
+            TextField(controller: berat, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Berat Bersih (kg)')),
           ]),
         ),
         actions: [
@@ -303,7 +397,8 @@ class _HomePageState extends State<HomePage> {
         n.bruto = double.tryParse(bruto.text);
         n.tara = double.tryParse(tara.text);
         n.netto = double.tryParse(netto.text);
-        n.jjg = double.tryParse(jjg.text);
+        n.potongan = double.tryParse(potongan.text);
+        n.berat = double.tryParse(berat.text);
         n.catatan = n.perluCek ? 'CEK MANUAL' : '';
       });
     }
@@ -412,8 +507,7 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.park),
             tooltip: 'Panen - janjang per blok',
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const PanenPage())),
+            onPressed: _bukaPanen,
           ),
           // TOMBOL HAPUS SEMUA DATA + FILE EXCEL
           IconButton(
