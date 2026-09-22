@@ -2,10 +2,12 @@
 // Tiket Timbang PT Perlang Sawitindo Mas (NO TIKET / RELASI / PLAT NO /
 // TARRA / BERAT / SORTASI %, tanggal "21 Sep 2026", harga "@3090")
 class Nota {
+  String? perusahaan;   // nama PT/CV/UD/PD di kepala nota
   String? tanggal, noNota, supplier, nopol, produk, sopir, jamMasuk, jamKeluar;
   double? bruto, tara, netto, potongan, berat, sortasi, jjg, harga, total;
   String fileFoto = '';
   String catatan = '';
+  bool sudahAda = false;   // no tiket sudah tersimpan di database
 
   double? get nettoBersih => berat ??
       (netto != null ? netto! - (potongan ?? 0) : null);
@@ -14,6 +16,7 @@ class Nota {
       supplier == null || bruto == null || tara == null || netto == null;
 
   Map<String, dynamic> toMap() => {
+        'perusahaan': perusahaan,
         'tanggal': tanggal, 'no_nota': noNota, 'supplier': supplier,
         'nopol': nopol, 'sopir': sopir,
         'bruto': bruto, 'tara': tara, 'netto': netto, 'potongan': potongan,
@@ -23,22 +26,40 @@ class Nota {
 }
 
 class NotaParser {
+  // Pola GENERIK — mengenal format nota dari perusahaan apa pun
+  // (PT/CV/UD/PD, istilah tiket/nota/bukti, plat no/polisi/kendaraan, dll.)
   static final Map<String, RegExp> p = {
-    'no_nota':  RegExp(r'(?:no\.?\s*tiket|no\.?\s*nota)\s*[:\-]?\s*(\d{6,})', caseSensitive: false),
-    'tanggal':  RegExp(r'tanggal\s*cetak\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})', caseSensitive: false),
-    'tanggal2': RegExp(r'\b(\d{1,2}/\d{1,2}/\d{4})\b'),
-    'supplier': RegExp(r'(?:relasi|supplier|nama|petani|unit|kelompok)\s*[:\-]?\s*(.{2,60}?)(?=\s{2,}|\s+(?:tarr?a|netto|bruto|potongan|berat|jam|plat|produk|no|ket)\b|$)', caseSensitive: false),
-    'nopol':    RegExp(r'plat\s*no\s*[:\-]?\s*([A-Za-z]{1,2}\s?\d{3,4}\s?[A-Za-z]{0,3})', caseSensitive: false),
-    'produk':   RegExp(r'produk\s*[:\-]?\s*([A-Za-z]{2,10})\b', caseSensitive: false),
-    'sopir':    RegExp(r'(?:sopir|supir|driver)\s*[:\-]?\s*([A-Za-z][A-Za-z .]{1,25})', caseSensitive: false),
-    'bruto':    RegExp(r'bruto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
-    'tara':     RegExp(r'tarr?a\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
-    'netto':    RegExp(r'netto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
-    'potongan': RegExp(r'potongan\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
-    'berat':    RegExp(r'berat\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
-    'sortasi':  RegExp(r'sortasi\s*[:\-]?\s*([\d.,]+)\s*%', caseSensitive: false),
-    'harga':    RegExp(r'@\s*([\d.,]{3,})|(?:harga)\s*[:\-]?\s*(?:rp\.?)?\s*([\d.,]+)', caseSensitive: false),
-    'jjg':      RegExp(r'(?:jjg|janjang)\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
+    'perusahaan': RegExp(
+        r'^((?:PT|CV|UD|PD|YAYASAN)\.?\s+[A-Z0-9][A-Z0-9 .,&\-]{2,60})$',
+        caseSensitive: false, multiLine: true),
+    'no_nota': RegExp(
+        r'(?:no\.?\s*(?:tiket|nota)|nomor\s*(?:tiket|nota)|tiket\s*no\.?|no\.?\s*(?:bukti|struk))\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{2,})',
+        caseSensitive: false),
+    'tanggal': RegExp(
+        r'(?:tanggal\s*cetak|tanggal|tgl\.?|date)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})',
+        caseSensitive: false),
+    'tanggal2': RegExp(r'\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b'),
+    'supplier': RegExp(
+        r'(?:relasi|supplier|nama\s*supplier|pemasok|mitra|petani|unit|kelompok|pengirim|afdeling|afd\.?)\s*[:\-]?\s*(.{2,60}?)(?=\s{2,}|\s+(?:tarr?a|netto|bruto|potongan|berat|jam|plat|produk|no|ket)\b|$)',
+        caseSensitive: false),
+    'nopol': RegExp(
+        r'(?:plat\s*no|no\.?\s*pol(?:isi)?\.?|nomor\s*polisi|no\.?\s*kendaraan|no\.?\s*plat|nopol)\s*[:\-]?\s*([A-Za-z]{1,2}\s?\d{3,4}\s?[A-Za-z]{0,3})',
+        caseSensitive: false),
+    'produk': RegExp(r'produk\s*[:\-]?\s*([A-Za-z]{2,10})\b', caseSensitive: false),
+    'sopir': RegExp(r'(?:sopir|supir|driver)\s*[:\-]?\s*([A-Za-z][A-Za-z .]{1,25})',
+        caseSensitive: false),
+    'bruto': RegExp(r'bruto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
+    'tara': RegExp(r'tarr?a\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
+    'netto': RegExp(r'netto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
+    'potongan': RegExp(r'(?:potongan|sortasi\s*\(kg\))\s*[:\-]?\s*([\d.,]+)',
+        caseSensitive: false),
+    'berat': RegExp(r'berat(?:\s*bersih)?\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
+    'netto_bersih': RegExp(r'netto\s*bersih\s*[:\-]?\s*([\d.,]+)',
+        caseSensitive: false),
+    'sortasi': RegExp(r'sortasi\s*[:\-]?\s*([\d.,]+)\s*%', caseSensitive: false),
+    'harga': RegExp(r'@\s*([\d.,]{3,})|(?:harga)\s*[:\-]?\s*(?:rp\.?)?\s*([\d.,]+)',
+        caseSensitive: false),
+    'jjg': RegExp(r'(?:jjg|janjang)\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
     'jam_masuk': RegExp(r'jam\s*masuk\s*[:\-]?\s*([\d/ .:]+)', caseSensitive: false),
     'jam_keluar': RegExp(r'jam\s*keluar\s*[:\-]?\s*([\d/ .:]+)', caseSensitive: false),
   };
@@ -109,6 +130,7 @@ class NotaParser {
 
   static Nota parse(String text, String fileFoto) {
     final n = Nota()
+      ..perusahaan = _get('perusahaan', text)
       ..tanggal = _parseTanggal(_get('tanggal', text), _get('tanggal2', text))
       ..noNota = _get('no_nota', text)
       ..supplier = _get('supplier', text)
@@ -121,7 +143,7 @@ class NotaParser {
       ..tara = _num(_get('tara', text))
       ..netto = _num(_get('netto', text))
       ..potongan = _num(_get('potongan', text))
-      ..berat = _num(_get('berat', text))
+      ..berat = _num(_get('berat', text) ?? _get('netto_bersih', text))
       ..sortasi = _num(_get('sortasi', text))
       ..jjg = _num(_get('jjg', text))
       ..harga = _num(_get2('harga', text))

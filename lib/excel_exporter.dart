@@ -3,9 +3,14 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
+import 'package:archive/archive.dart';
+
+// KODE AKSES file export — hanya yang tahu kode ini yang bisa membuka ZIP.
+// Ganti sesuai keinginan, lalu rebuild.
+const String KODE_AKSES = 'bros1234';
 
 class ExcelExporter {
-  static final headers = ['Tanggal','No Nota','Supplier','No Polisi','Sopir',
+  static final headers = ['Tanggal','No Nota','Supplier','Perusahaan/PKS','No Polisi','Sopir',
     'Bruto (kg)','Tara (kg)','Netto (kg)','Potongan','Netto Bersih (kg)',
     'Jml TBS/JJG','Blok','Catatan'];
 
@@ -42,7 +47,7 @@ class ExcelExporter {
       for (var r = 0; r < data.length; r++) {
         final m = data[r];
         final vals = [
-          m['tanggal'], m['no_nota'], m['supplier'], m['nopol'], m['sopir'],
+          m['tanggal'], m['no_nota'], m['supplier'], m['perusahaan'], m['nopol'], m['sopir'],
           m['bruto'], m['tara'], m['netto'], m['potongan'], m['netto_bersih'],
           m['jjg'], blokOf[m['id']] ?? '', m['catatan']
         ];
@@ -162,6 +167,15 @@ class ExcelExporter {
   static Future<void> exportAndShare(List<Map<String, dynamic>> rows, String tanggal,
       {List<Map<String, dynamic>>? panen}) async {
     final f = await export(rows, tanggal, panen: panen);
-    await Share.shareXFiles([XFile(f.path)], text: 'Rekap Nota Timbang $tanggal');
+    // bungkus dalam ZIP berpassword — hanya yang tahu kode yang bisa buka
+    final bytes = await f.readAsBytes();
+    final archive = Archive();
+    archive.addFile(ArchiveFile(
+        'Nota_Timbang_$tanggal.xlsx', bytes.length, bytes));
+    final zipBytes = ZipEncoder(password: KODE_AKSES).encode(archive);
+    final zipFile = File('${f.parent.path}/Nota_Timbang_$tanggal.ZIP');
+    await zipFile.writeAsBytes(zipBytes!, flush: true);
+    await Share.shareXFiles([XFile(zipFile.path)],
+        text: 'Rekap Nota Timbang $tanggal (ZIP berkode — tanya supervisor)');
   }
 }

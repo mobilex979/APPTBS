@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'db_helper.dart';
+import 'license.dart';
 import 'excel_exporter.dart';
 import 'nota_parser.dart';
 
@@ -59,7 +60,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'BUSLIN BROS - Aplikasi Tbs',
         theme: temaAplikasi(PILIH_TEMA),
-        home: const HomePage(),
+        home: const Gate(),
         debugShowCheckedModeBanner: false,
       );
 }
@@ -148,9 +149,15 @@ class _HomePageState extends State<HomePage> {
   Future<void> _prosesGambar(List<XFile> files) async {
     if (files.isEmpty) return;
     setState(() => loading = true);
+    final sudahTersimpan = await DBHelper.noTiketTersimpan();
     for (final f in files) {
       final text = await _ocr(f.path);
-      setState(() => draft.add(NotaParser.parse(text, f.name)));
+      final n = NotaParser.parse(text, f.name);
+      // screening anti-double: cek ke database & antrian foto batch ini
+      n.sudahAda = n.noNota != null &&
+          (sudahTersimpan.contains(n.noNota!) ||
+              draft.any((d) => d.noNota == n.noNota));
+      setState(() => draft.add(n));
     }
     setState(() => loading = false);
   }
@@ -167,15 +174,22 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _simpanSemua() async {
+    var dilewati = 0;
     for (final n in draft) {
+      if (n.sudahAda) {
+        dilewati++;          // no tiket double -> tidak disimpan
+        continue;
+      }
       await DBHelper.insert(n);
     }
     setState(() => draft.clear());
     await _refreshCount();
     await _loadSaved();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Semua nota tersimpan.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(dilewati > 0
+              ? 'Tersimpan. $dilewati nota double (no tiket sama) dilewati.'
+              : 'Semua nota tersimpan.')));
     }
   }
 
@@ -207,7 +221,9 @@ class _HomePageState extends State<HomePage> {
       final dir = await getExternalStorageDirectory()
           ?? await getApplicationDocumentsDirectory();
       for (final f in dir.listSync()) {
-        if (f is File && f.path.contains('Nota_Timbang_') && f.path.endsWith('.xlsx')) {
+        if (f is File &&
+            f.path.contains('Nota_Timbang_') &&
+            (f.path.endsWith('.xlsx') || f.path.toLowerCase().endsWith('.zip'))) {
           f.deleteSync();
         }
       }
@@ -226,6 +242,7 @@ class _HomePageState extends State<HomePage> {
     final tgl = TextEditingController(
         text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
     final noNota = TextEditingController();
+    final perusahaan = TextEditingController();
     final supplier = TextEditingController();
     final nopol = TextEditingController();
     final sopir = TextEditingController();
@@ -243,6 +260,8 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
+            TextField(controller: perusahaan,
+                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
             TextField(controller: supplier,
                 decoration: const InputDecoration(labelText: 'Supplier / Relasi')),
             TextField(controller: nopol,
@@ -271,6 +290,7 @@ class _HomePageState extends State<HomePage> {
       final n = Nota()
         ..tanggal = tgl.text.trim().isEmpty ? null : tgl.text.trim()
         ..noNota = noNota.text.trim().isEmpty ? null : noNota.text.trim()
+        ..perusahaan = perusahaan.text.trim().isEmpty ? null : perusahaan.text.trim()
         ..supplier = supplier.text.trim().isEmpty ? null : supplier.text.trim()
         ..nopol = nopol.text.trim().isEmpty ? null : nopol.text.trim()
         ..sopir = sopir.text.trim().isEmpty ? null : sopir.text.trim()
@@ -300,6 +320,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _edit(Nota n) async {
+    final perusahaan = TextEditingController(text: n.perusahaan);
     final supplier = TextEditingController(text: n.supplier);
     final bruto = TextEditingController(text: n.bruto?.toString() ?? '');
     final tara = TextEditingController(text: n.tara?.toString() ?? '');
@@ -315,6 +336,8 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Cek / Edit Nota'),
         content: SingleChildScrollView(
           child: Column(children: [
+            TextField(controller: perusahaan,
+                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
             TextField(controller: supplier,
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
@@ -345,6 +368,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (ok == true) {
       setState(() {
+        n.perusahaan = perusahaan.text.isEmpty ? null : perusahaan.text;
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
         n.nopol = nopol.text.isEmpty ? null : nopol.text;
@@ -391,9 +415,33 @@ class _HomePageState extends State<HomePage> {
         final totJjg =
             panenRows.fold<double>(0, (a, m) => a + (m['jjg'] as num? ?? 0));
         final avg = totJjg > 0 ? totBerat / totJjg : null;
+        // rata-rata kg/JJG dipisah per mandor
+        final beratOf = <int, double>{};
+        for (final n in savedRows) {
+          beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0);
+        }
+        final mandorBerat = <String, double>{};
+        final mandorJjg = <String, double>{};
+        for (final p in panenRows) {
+          final m = (p['mandor'] == null || p['mandor'].toString().trim().isEmpty)
+              ? '(tanpa mandor)'
+              : p['mandor'].toString();
+          var b = 0.0;
+          for (final tid in (p['tiket_ids']?.toString() ?? '').split(',')) {
+            final id = int.tryParse(tid.trim());
+            if (id != null && beratOf.containsKey(id)) b += beratOf[id]!;
+          }
+          mandorBerat[m] = (mandorBerat[m] ?? 0) + b;
+          mandorJjg[m] = (mandorJjg[m] ?? 0) + ((p['jjg'] as num?) ?? 0);
+        }
+        final avgMandor = mandorJjg.entries
+            .where((e) => e.value > 0 && (mandorBerat[e.key] ?? 0) > 0)
+            .map((e) =>
+                '${e.key}: ${(mandorBerat[e.key]! / e.value).toStringAsFixed(1)}')
+            .join(' \u2022 ');
         final ringkasan = 'Rekap Tersimpan: $savedCount nota\n'
-            'Total: ${fmtNum(totBerat)} kg \u2022 Panen ${fmtNum(totJjg)} jjg \u2022 '
-            'Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG';
+            'Total: ${fmtNum(totBerat)} kg \u2022 Panen ${fmtNum(totJjg)} jjg \u2022 Avg: ${avg != null ? avg.toStringAsFixed(1) : '-'} kg/JJG'
+            '${avgMandor.isNotEmpty ? '\nPer mandor: $avgMandor kg/JJG' : ''}';
         return Card(
           margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           color: Colors.green[50],
@@ -409,7 +457,7 @@ class _HomePageState extends State<HomePage> {
                   SelectableText('Rekap Tersimpan: $savedCount nota',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 17)),
-                  SelectableText(ringkasan.split('\n').last,
+                  SelectableText(ringkasan.split('\n').sublist(1).join('\n'),
                       style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -439,6 +487,7 @@ class _HomePageState extends State<HomePage> {
               columns: const [
                 DataColumn(label: Text('No Tiket')),
                 DataColumn(label: Text('Plat No')),
+                DataColumn(label: Text('Perusahaan')),
                 DataColumn(label: Text('Supir')),
                 DataColumn(label: Text('Bruto'), numeric: true),
                 DataColumn(label: Text('Tarra'), numeric: true),
@@ -450,6 +499,7 @@ class _HomePageState extends State<HomePage> {
                   DataRow(cells: [
                     DataCell(Text(m['no_nota']?.toString() ?? '-')),
                     DataCell(Text(m['nopol']?.toString() ?? '-')),
+                    DataCell(Text(m['perusahaan']?.toString() ?? '-')),
                     DataCell(Text(m['sopir']?.toString() ?? '-')),
                     DataCell(Text(fmtNum(m['bruto']))),
                     DataCell(Text(fmtNum(m['tara']))),
@@ -481,6 +531,8 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
             Text('Aplikasi Tbs',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.normal)),
+            Text("by YY's",
+                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic)),
           ],
         ),
         actions: [
@@ -520,11 +572,14 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (ctx, i) {
                     final n = draft[i];
                     return Card(
-                      color: n.perluCek ? Colors.red[50] : null,
+                      color: n.sudahAda
+                          ? Colors.orange[50]
+                          : (n.perluCek ? Colors.red[50] : null),
                       margin: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       child: ListTile(
-                        title: Text(n.supplier ?? '(supplier kosong)'),
+                        title: Text(
+                            '${n.supplier ?? '(supplier kosong)'}${n.sudahAda ? '  \u26a0 SUDAH ADA' : ''}'),
                         subtitle: Text(
                           'Nota: ${n.noNota ?? '-'} | '
                           'Bruto: ${n.bruto ?? '-'} | Tara: ${n.tara ?? '-'} | '
@@ -630,6 +685,7 @@ class _SavedPageState extends State<SavedPage> {
   }
 
   Future<void> _editRow(Map<String, dynamic> m) async {
+    final perusahaan = TextEditingController(text: m['perusahaan']?.toString());
     final supplier = TextEditingController(text: m['supplier']?.toString());
     final noNota = TextEditingController(text: m['no_nota']?.toString());
     final nopol = TextEditingController(text: m['nopol']?.toString());
@@ -644,6 +700,8 @@ class _SavedPageState extends State<SavedPage> {
         title: Text('Edit Nota #${m['id']}'),
         content: SingleChildScrollView(
           child: Column(children: [
+            TextField(controller: perusahaan,
+                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
             TextField(controller: supplier,
                 decoration: const InputDecoration(labelText: 'Supplier')),
             TextField(controller: noNota,
@@ -676,6 +734,7 @@ class _SavedPageState extends State<SavedPage> {
       final n = double.tryParse(netto.text);
       final bb = double.tryParse(berat.text);
       await DBHelper.update(m['id'] as int, {
+        'perusahaan': perusahaan.text.isEmpty ? null : perusahaan.text,
         'supplier': supplier.text.isEmpty ? null : supplier.text,
         'no_nota': noNota.text,
         'nopol': nopol.text.isEmpty ? null : nopol.text,
@@ -760,7 +819,7 @@ class _SavedPageState extends State<SavedPage> {
                     title: Text('${m['supplier'] ?? '(tanpa supplier)'}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(
-                      'Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
+                      '${m['perusahaan'] ?? '-'} • Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
                       'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
                       'Netto: ${_fmt(m['netto'])} kg\n'
                       'Berat bersih: ${_fmt(m['netto_bersih'])} kg ',
@@ -922,6 +981,27 @@ class _PanenPageState extends State<PanenPage> {
       labels.add(label);
     }
     return '\n\u2693 Tiket: ${labels.join(', ')} (${ids.length})';
+  }
+
+  // rata-rata kg/JJG blok ini = total berat tiket terhubung / jjg blok
+  double? _avgBlok(Map<String, dynamic> p) {
+    final jjg = (p['jjg'] as num?) ?? 0;
+    if (jjg <= 0) return null;
+    var berat = 0.0;
+    for (final id in _linkedIds(p)) {
+      for (final n in notaRows) {
+        if (n['id'] == id) {
+          berat += (n['netto_bersih'] as num? ?? 0);
+          break;
+        }
+      }
+    }
+    return berat > 0 ? berat / jjg : null;
+  }
+
+  String _avgLabel(Map<String, dynamic> p) {
+    final a = _avgBlok(p);
+    return a == null ? '' : '\nRata2: ${a.toStringAsFixed(1)} kg/JJG';
   }
 
   // dialog pilih nota timbang yang terhubung ke blok ini (bisa beberapa)
@@ -1174,6 +1254,7 @@ class _PanenPageState extends State<PanenPage> {
                         subtitle: Text(
                             '${m['tanggal']}${m['mandor'] != null ? ' • Mandor: ${m['mandor']}' : ''}'
                             '${_tiketLabel(m)}'
+                            '${_avgLabel(m)}'
                             '${m['keterangan'] != null ? '\n${m['keterangan']}' : ''}'),
                         isThreeLine: true,
                         trailing: selectMode
@@ -1204,6 +1285,90 @@ class _PanenPageState extends State<PanenPage> {
                 ),
         ),
       ]),
+    );
+  }
+}
+
+// ═══════════ PINTU GERBANG: cek lisensi sebelum masuk aplikasi ═══════════
+class Gate extends StatelessWidget {
+  const Gate({super.key});
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+        future: License.sudahAktif(),
+        builder: (ctx, snap) {
+          if (!snap.hasData) {
+            return const Scaffold(
+                body: Center(child: CircularProgressIndicator()));
+          }
+          return snap.data! ? const HomePage() : const LicensePage();
+        },
+      );
+}
+
+// ═══════════ LAYAR AKTIVASI LISENSI ═══════════
+class LicensePage extends StatefulWidget {
+  const LicensePage({super.key});
+  @override
+  State<LicensePage> createState() => _LicensePageState();
+}
+
+class _LicensePageState extends State<LicensePage> {
+  final kode = TextEditingController();
+  String? pesan;
+
+  Future<void> _aktivasi() async {
+    final exp = License.cek(kode.text);
+    if (exp == null) {
+      setState(() => pesan = 'Kode salah. Hubungi pemilik aplikasi.');
+      return;
+    }
+    await License.simpan(kode.text);
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomePage()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.verified_user, size: 72, color: Colors.green),
+            const SizedBox(height: 12),
+            const Text('BUSLIN BROS',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text('Aplikasi Tbs',
+                style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const SizedBox(height: 24),
+            const Text('Masukkan kode lisensi dari supervisor:',
+                textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            TextField(
+              controller: kode,
+              keyboardType: TextInputType.number,
+              maxLength: 10,
+              decoration: const InputDecoration(
+                labelText: 'Kode lisensi (10 digit)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (pesan != null)
+              Text(pesan!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _aktivasi,
+                icon: const Icon(Icons.key),
+                label: const Text('Aktivasi'),
+              ),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

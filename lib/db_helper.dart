@@ -13,7 +13,7 @@ class DBHelper {
       onCreate: (d, v) => d.execute(
         'CREATE TABLE nota('
         'id INTEGER PRIMARY KEY AUTOINCREMENT,'
-        'tanggal TEXT, no_nota TEXT, supplier TEXT,'
+        'perusahaan TEXT, tanggal TEXT, no_nota TEXT, supplier TEXT,'
         'nopol TEXT, sopir TEXT,'
         'bruto REAL, tara REAL, netto REAL, potongan REAL,'
         'netto_bersih REAL, jjg REAL, harga REAL, total REAL,'
@@ -21,6 +21,12 @@ class DBHelper {
         'created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
       ),
     );
+    // migrasi: tambah kolom perusahaan untuk database lama
+    final cols = await _db!.rawQuery('PRAGMA table_info(nota)');
+    final names = cols.map((c) => c['name'] as String).toList();
+    if (!names.contains('perusahaan')) {
+      await _db!.execute('ALTER TABLE nota ADD COLUMN perusahaan TEXT');
+    }
     return _db!;
   }
 
@@ -71,6 +77,15 @@ class DBHelper {
   static Future<List<Map<String, dynamic>>> allPanen() async {
     await _ensurePanen();
     return (await db).query('panen', orderBy: 'id DESC');
+  }
+
+  // daftar nomor tiket yang sudah tersimpan (untuk screening anti-double)
+  static Future<Set<String>> noTiketTersimpan() async {
+    final r = await (await db).query('nota', columns: ['no_nota']);
+    return r
+        .map((m) => m['no_nota']?.toString() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toSet();
   }
 
   static Future<int> updatePanen(int id, Map<String, dynamic> values) async {
