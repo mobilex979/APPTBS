@@ -154,6 +154,7 @@ class NotaParser {
       n.total = n.berat! * n.harga!;
     }
     final info = <String>[
+      'Sumber: Foto OCR',
       if (n.produk != null) 'Produk: ${n.produk}',
       if (n.sortasi != null) 'Sortasi: ${n.sortasi}%',
       if (n.jamMasuk != null) 'Masuk: ${n.jamMasuk}',

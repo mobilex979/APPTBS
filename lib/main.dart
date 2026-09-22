@@ -631,7 +631,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('BUSLIN BROS',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             Text('Aplikasi Tbs',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.normal)),
             Text("by YY's",
