@@ -418,7 +418,7 @@ class _HomePageState extends State<HomePage> {
         // rata-rata kg/JJG dipisah per mandor
         final beratOf = <int, double>{};
         for (final n in savedRows) {
-          beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0);
+          beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0).toDouble();
         }
         final mandorBerat = <String, double>{};
         final mandorJjg = <String, double>{};
@@ -431,8 +431,8 @@ class _HomePageState extends State<HomePage> {
             final id = int.tryParse(tid.trim());
             if (id != null && beratOf.containsKey(id)) b += beratOf[id]!;
           }
-          mandorBerat[m] = (mandorBerat[m] ?? 0) + b;
-          mandorJjg[m] = (mandorJjg[m] ?? 0) + ((p['jjg'] as num?) ?? 0);
+          mandorBerat[m] = (mandorBerat[m] ?? 0.0) + b;
+          mandorJjg[m] = (mandorJjg[m] ?? 0.0) + ((p['jjg'] as num?) ?? 0).toDouble();
         }
         final avgMandor = mandorJjg.entries
             .where((e) => e.value > 0 && (mandorBerat[e.key] ?? 0) > 0)
