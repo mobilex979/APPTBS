@@ -2,7 +2,7 @@
 // Tiket Timbang PT Perlang Sawitindo Mas (NO TIKET / RELASI / PLAT NO /
 // TARRA / BERAT / SORTASI %, tanggal "21 Sep 2026", harga "@3090")
 class Nota {
-  String? tanggal, noNota, supplier, nopol, produk, jamMasuk, jamKeluar;
+  String? tanggal, noNota, supplier, nopol, produk, sopir, jamMasuk, jamKeluar;
   double? bruto, tara, netto, potongan, berat, sortasi, jjg, harga, total;
   String fileFoto = '';
   String catatan = '';
@@ -15,7 +15,7 @@ class Nota {
 
   Map<String, dynamic> toMap() => {
         'tanggal': tanggal, 'no_nota': noNota, 'supplier': supplier,
-        'nopol': nopol, 'sopir': produk != null ? 'Produk: $produk' : null,
+        'nopol': nopol, 'sopir': sopir,
         'bruto': bruto, 'tara': tara, 'netto': netto, 'potongan': potongan,
         'netto_bersih': nettoBersih, 'jjg': jjg, 'harga': harga,
         'total': total, 'file_foto': fileFoto, 'catatan': catatan,
@@ -30,6 +30,7 @@ class NotaParser {
     'supplier': RegExp(r'(?:relasi|supplier|nama|petani|unit|kelompok)\s*[:\-]?\s*(.{2,60}?)(?=\s{2,}|\s+(?:tarr?a|netto|bruto|potongan|berat|jam|plat|produk|no|ket)\b|$)', caseSensitive: false),
     'nopol':    RegExp(r'plat\s*no\s*[:\-]?\s*([A-Za-z]{1,2}\s?\d{3,4}\s?[A-Za-z]{0,3})', caseSensitive: false),
     'produk':   RegExp(r'produk\s*[:\-]?\s*([A-Za-z]{2,10})\b', caseSensitive: false),
+    'sopir':    RegExp(r'(?:sopir|supir|driver)\s*[:\-]?\s*([A-Za-z][A-Za-z .]{1,25})', caseSensitive: false),
     'bruto':    RegExp(r'bruto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
     'tara':     RegExp(r'tarr?a\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
     'netto':    RegExp(r'netto\s*[:\-]?\s*([\d.,]+)', caseSensitive: false),
@@ -113,6 +114,7 @@ class NotaParser {
       ..supplier = _get('supplier', text)
       ..nopol = _get('nopol', text)
       ..produk = _get('produk', text)
+      ..sopir = _get('sopir', text)
       ..jamMasuk = _get('jam_masuk', text)
       ..jamKeluar = _get('jam_keluar', text)
       ..bruto = _num(_get('bruto', text))
