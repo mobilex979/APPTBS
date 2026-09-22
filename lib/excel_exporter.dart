@@ -23,6 +23,17 @@ class ExcelExporter {
     final wb = Workbook();
     wb.worksheets.clear();
 
+    // peta id nota -> blok (dari tiket_ids panen yang terhubung)
+    final blokOf = <int, String>{};
+    final notaById = <int, Map<String, dynamic>>{};
+    for (final n in rows) { notaById[n['id'] as int] = n; }
+    for (final p in panen ?? const <Map<String, dynamic>>[]) {
+      for (final tid in (p['tiket_ids']?.toString() ?? '').split(',')) {
+        final id = int.tryParse(tid.trim());
+        if (id != null) blokOf[id] = p['blok']?.toString() ?? '';
+      }
+    }
+
     Worksheet fillSheet(String name, List<Map<String, dynamic>> data) {
       final ws = wb.worksheets.addWithName(_safe(name));
       for (var c = 0; c < headers.length; c++) {
@@ -49,17 +60,6 @@ class ExcelExporter {
     }
 
     final wsSemua = fillSheet('SEMUA', rows);
-
-    // peta id nota -> blok (dari tiket_ids panen yang terhubung)
-    final blokOf = <int, String>{};
-    final notaById = <int, Map<String, dynamic>>{};
-    for (final n in rows) { notaById[n['id'] as int] = n; }
-    for (final p in panen ?? const <Map<String, dynamic>>[]) {
-      for (final tid in (p['tiket_ids']?.toString() ?? '').split(',')) {
-        final id = int.tryParse(tid.trim());
-        if (id != null) blokOf[id] = p['blok']?.toString() ?? '';
-      }
-    }
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (var m in rows) {
       grouped.putIfAbsent(m['supplier']?.toString() ?? 'TANPA_SUPPLIER', () => []).add(m);
