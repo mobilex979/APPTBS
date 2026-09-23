@@ -69,6 +69,28 @@ jobs:
           open(p, 'w').write(s)
           PYEOF
 
+      # Intent filter: agar file backup bisa dibuka langsung dari WA/file manager
+      - name: Intent filter
+        run: |
+          python3 - << 'PYEOF'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          filt = ('<intent-filter>'
+                  '<action android:name="android.intent.action.VIEW"/>'
+                  '<category android:name="android.intent.category.DEFAULT"/>'
+                  '<category android:name="android.intent.category.BROWSABLE"/>'
+                  '<data android:scheme="content"/>'
+                  '<data android:scheme="file"/>'
+                  '</intent-filter>'
+                  '<intent-filter>'
+                  '<action android:name="android.intent.action.SEND"/>'
+                  '<category android:name="android.intent.category.DEFAULT"/>'
+                  '<data android:mimeType="*/*"/>'
+                  '</intent-filter>')
+          s = s.replace('</activity>', filt + '</activity>')
+          open(p, 'w').write(s)
+          PYEOF
+
       - run: flutter pub get
 
       - run: flutter build apk --release --obfuscate --split-debug-info=symbols
