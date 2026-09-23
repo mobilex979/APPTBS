@@ -8,6 +8,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -29,9 +30,10 @@ void main() => runApp(const MyApp());
 const int PILIH_TEMA = 1;
 
 ThemeData temaAplikasi(int pilihan) {
+  ThemeData t;
   switch (pilihan) {
     case 2: // Hijau Tua Elegan
-      return ThemeData(
+      t = ThemeData(
         colorSchemeSeed: const Color(0xFF1B5E20),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
@@ -40,7 +42,7 @@ ThemeData temaAplikasi(int pilihan) {
         ),
       );
     case 3: // Biru Profesional
-      return ThemeData(
+      t = ThemeData(
         colorSchemeSeed: Colors.indigo,
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
@@ -49,14 +51,16 @@ ThemeData temaAplikasi(int pilihan) {
         ),
       );
     case 4: // Dark Mode
-      return ThemeData(
+      t = ThemeData(
         colorSchemeSeed: Colors.green,
         brightness: Brightness.dark,
         useMaterial3: true,
       );
     default: // 1 = Hijau Sawit
-      return ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true);
+      t = ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true);
   }
+  // Terapkan font Nunito ke seluruh aplikasi
+  return t.copyWith(textTheme: GoogleFonts.nunitoTextTheme(t.textTheme));
 }
 
 // tanggal: ISO (YYYY-MM-DD) <-> tampilan (DD-MM-YYYY)
@@ -295,6 +299,7 @@ class _HomePageState extends State<HomePage> {
   // HAPUS SEMUA DATA + FILE EXCEL (dengan konfirmasi dulu)
   Future<void> _hapusSemua() async {
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus semua data?'),
@@ -348,8 +353,19 @@ class _HomePageState extends State<HomePage> {
     final bruto = TextEditingController();
     final tara = TextEditingController();
     final netto = TextEditingController();
+    void hitungNetto() {
+      final b = double.tryParse(bruto.text);
+      final t = double.tryParse(tara.text);
+      if (b != null && t != null) {
+        netto.text = (b - t).toStringAsFixed(0);
+      }
+    }
+    bruto.addListener(hitungNetto);
+    tara.addListener(hitungNetto);
+
     final potongan = TextEditingController();
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Input Nota Manual'),
@@ -437,11 +453,22 @@ class _HomePageState extends State<HomePage> {
     final bruto = TextEditingController(text: n.bruto?.toString() ?? '');
     final tara = TextEditingController(text: n.tara?.toString() ?? '');
     final netto = TextEditingController(text: n.netto?.toString() ?? '');
+    void hitungNetto() {
+      final b = double.tryParse(bruto.text);
+      final t = double.tryParse(tara.text);
+      if (b != null && t != null) {
+        netto.text = (b - t).toStringAsFixed(0);
+      }
+    }
+    bruto.addListener(hitungNetto);
+    tara.addListener(hitungNetto);
+
     final potongan = TextEditingController(text: n.potongan?.toString() ?? '');
     final noNota = TextEditingController(text: n.noNota);
     final nopol = TextEditingController(text: n.nopol);
     final sopir = TextEditingController(text: n.sopir);
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cek / Edit Nota'),
@@ -535,6 +562,7 @@ class _HomePageState extends State<HomePage> {
   // restore dari path file (dipakai file picker & buka-langsung-dari-WA)
   Future<void> _restoreDariPath(String path) async {
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Restore Backup?'),
@@ -582,6 +610,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _konflikDialog(List<Map<String, dynamic>> konflik) async {
     final pilih = List<bool>.filled(konflik.length, false);
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
@@ -685,6 +714,161 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ── REKAP BULANAN (Versi 2): per bulan + total kg TBS per blok ──
+  Future<void> _rekapBulanan() async {
+    if (VERSI_HAPUS_OTOMATIS) return;
+    if (!SesiBulan.riwayatTerbuka) {
+      final ok = await _mintaKodeRiwayat();
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Kode salah.')));
+        }
+        return;
+      }
+      SesiBulan.riwayatTerbuka = true;
+    }
+    final nota = await DBHelper.all();
+    final panen = await DBHelper.allPanen();
+    final beratOf = <int, double>{};
+    for (final n in nota) {
+      beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0);
+    }
+    String bln(Map<String, dynamic> m) =>
+        (m['tanggal'] ?? m['created_at'] ?? '????-??').toString().length >= 7
+            ? (m['tanggal'] ?? m['created_at']).toString().substring(0, 7)
+            : '????-??';
+
+    // ── per bulan ──
+    final notaBulan = <String, double>{};
+    final beratBulan = <String, double>{};
+    for (final n in nota) {
+      final k = bln(n);
+      notaBulan[k] = (notaBulan[k] ?? 0) + 1;
+      beratBulan[k] = (beratBulan[k] ?? 0) + (n['netto_bersih'] as num? ?? 0);
+    }
+    final jjgBulan = <String, double>{};
+    for (final p in panen) {
+      final k = bln(p);
+      jjgBulan[k] = (jjgBulan[k] ?? 0) + ((p['jjg'] as num?) ?? 0);
+    }
+    final bulanRows = notaBulan.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    // ── per blok (mengikuti bulan terpilih / semua) ──
+    final filter = SesiBulan.bulanDipilih;
+    bool cocok(Map<String, dynamic> m) => filter == null || bln(m) == filter;
+    final blokJjg = <String, double>{};
+    final blokBerat = <String, double>{};
+    final blokMandor = <String, String>{};
+    for (final p in panen.where(cocok)) {
+      final bk = (p['blok']?.toString().trim().isNotEmpty == true)
+          ? p['blok'].toString()
+          : '(tanpa blok)';
+      blokMandor[bk] = (p['mandor'] == null || p['mandor'].toString().trim().isEmpty)
+          ? '-'
+          : p['mandor'].toString();
+      blokJjg[bk] = (blokJjg[bk] ?? 0) + ((p['jjg'] as num?) ?? 0);
+      var b = 0.0;
+      for (final tid in (p['tiket_ids']?.toString() ?? '').split(',')) {
+        final id = int.tryParse(tid.trim());
+        if (id != null && beratOf.containsKey(id)) b += beratOf[id]!;
+      }
+      blokBerat[bk] = (blokBerat[bk] ?? 0) + b;
+    }
+    final blokRows = blokBerat.keys.toList()
+      ..sort((a, b) => blokBerat[b]!.compareTo(blokBerat[a]!));
+
+    String avg(double berat, double jjg) =>
+        jjg > 0 ? (berat / jjg).toStringAsFixed(1) : '-';
+
+    // teks untuk disalin
+    final buf = StringBuffer('REKAP BULANAN - BUSLIN BROS\n');
+    for (final k in bulanRows) {
+      buf.writeln(
+          '${namaBulan(k)} | nota ${notaBulan[k]!.toStringAsFixed(0)} | ${fmtNum(beratBulan[k])} kg | JJG TBS ${fmtNum(jjgBulan[k])} | avg ${avg(beratBulan[k]!, jjgBulan[k] ?? 0)} kg/JJG');
+    }
+    buf.writeln('\nTOTAL KG TBS PER BLOK${filter != null ? ' - ${namaBulan(filter)}' : ''}');
+    for (final bk in blokRows) {
+      buf.writeln(
+          '$bk (${blokMandor[bk]}) | JJG TBS ${fmtNum(blokJjg[bk])} | ${fmtNum(blokBerat[bk])} kg | avg ${avg(blokBerat[bk]!, blokJjg[bk] ?? 0)}');
+    }
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+            '📊 Rekap Bulanan${filter != null ? ' - ${namaBulan(filter)}' : ''}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 430,
+          child: ListView(children: [
+            const Text('PER BULAN',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(columns: const [
+                DataColumn(label: Text('Bulan')),
+                DataColumn(label: Text('Nota'), numeric: true),
+                DataColumn(label: Text('Berat (kg)'), numeric: true),
+                DataColumn(label: Text('JJG TBS'), numeric: true),
+                DataColumn(label: Text('Avg'), numeric: true),
+              ], rows: [
+                for (final k in bulanRows)
+                  DataRow(cells: [
+                    DataCell(Text(namaBulan(k))),
+                    DataCell(Text(notaBulan[k]!.toStringAsFixed(0))),
+                    DataCell(Text(fmtNum(beratBulan[k]))),
+                    DataCell(Text(fmtNum(jjgBulan[k]))),
+                    DataCell(Text(avg(beratBulan[k]!, jjgBulan[k] ?? 0))),
+                  ]),
+              ]),
+            ),
+            const Divider(),
+            const Text('TOTAL KG TBS PER BLOK',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(columns: const [
+                DataColumn(label: Text('Blok')),
+                DataColumn(label: Text('Mandor')),
+                DataColumn(label: Text('JJG TBS'), numeric: true),
+                DataColumn(label: Text('Berat (kg)'), numeric: true),
+                DataColumn(label: Text('Avg'), numeric: true),
+              ], rows: [
+                for (final bk in blokRows)
+                  DataRow(cells: [
+                    DataCell(Text(bk)),
+                    DataCell(Text(blokMandor[bk] ?? '-')),
+                    DataCell(Text(fmtNum(blokJjg[bk]))),
+                    DataCell(Text(fmtNum(blokBerat[bk]),
+                        style: const TextStyle(fontWeight: FontWeight.bold))),
+                    DataCell(Text(avg(blokBerat[bk]!, blokJjg[bk] ?? 0))),
+                  ]),
+              ]),
+            ),
+          ]),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.copy, color: Colors.green),
+            tooltip: 'Salin rekap ke clipboard',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: buf.toString()));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Rekap tersalin. Tempel di WA/email.')));
+            },
+          ),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Tutup')),
+        ],
+      ),
+    );
+  }
+
   // ── RIWAYAT BULAN (Versi 2) ──
   Future<void> _riwayat() async {
     if (VERSI_HAPUS_OTOMATIS) {
@@ -707,6 +891,7 @@ class _HomePageState extends State<HomePage> {
     final daftar = await DBHelper.bulanBulanAda();
     final sekarang = DateFormat('yyyy-MM').format(DateTime.now());
     final bulan = await showDialog<String>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Pilih Bulan'),
@@ -744,6 +929,7 @@ class _HomePageState extends State<HomePage> {
   Future<bool> _mintaKodeRiwayat() async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('AKSES RIWAYAT'),
@@ -770,6 +956,7 @@ class _HomePageState extends State<HomePage> {
     final sekarang = await Profil.namaMandor();
     final ctrl = TextEditingController(text: sekarang);
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Profil Mandor HP Ini'),
@@ -801,7 +988,8 @@ class _HomePageState extends State<HomePage> {
   // BUKA LAYAR PANEN + refresh home saat kembali
   Future<void> _bukaPanen() async {
     if (kunciBulanan) {
-      await showDialog(
+      await showDialogNone(
+        barrierDismissible: false,
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('\ud83d\udd12 Input Dikunci'),
@@ -1050,6 +1238,9 @@ class _HomePageState extends State<HomePage> {
                 case 'mandor':
                   _profilMandor();
                   break;
+                case 'rekap':
+                  _rekapBulanan();
+                  break;
                 case 'riwayat':
                   _riwayat();
                   break;
@@ -1074,6 +1265,10 @@ class _HomePageState extends State<HomePage> {
               PopupMenuItem(
                   value: 'mandor',
                   child: Text('\ud83d\udc64 Ganti Mandor')),
+              if (!VERSI_HAPUS_OTOMATIS)
+                const PopupMenuItem(
+                    value: 'rekap',
+                    child: Text('\ud83d\udcca Rekap Bulanan')),
               if (!VERSI_HAPUS_OTOMATIS)
                 const PopupMenuItem(
                     value: 'riwayat',
@@ -1211,6 +1406,7 @@ class _SavedPageState extends State<SavedPage> {
   Future<void> _hapusTerpilih() async {
     if (selected.isEmpty) return;
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Hapus ${selected.length} nota terpilih?'),
@@ -1241,7 +1437,18 @@ class _SavedPageState extends State<SavedPage> {
     final bruto = TextEditingController(text: m['bruto']?.toString());
     final tara = TextEditingController(text: m['tara']?.toString());
     final netto = TextEditingController(text: m['netto']?.toString());
+    void hitungNetto() {
+      final b = double.tryParse(bruto.text);
+      final t = double.tryParse(tara.text);
+      if (b != null && t != null) {
+        netto.text = (b - t).toStringAsFixed(0);
+      }
+    }
+    bruto.addListener(hitungNetto);
+    tara.addListener(hitungNetto);
+
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Edit Nota #${m['id']}'),
@@ -1296,6 +1503,7 @@ class _SavedPageState extends State<SavedPage> {
 
   Future<void> _hapusRow(Map<String, dynamic> m) async {
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Hapus Nota #${m['id']}?'),
@@ -1447,6 +1655,7 @@ class _PanenPageState extends State<PanenPage> {
     final mandorC = TextEditingController(text: p['mandor']?.toString());
     final ketC = TextEditingController(text: p['keterangan']?.toString());
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Edit Panen #${p['id']}'),
@@ -1497,6 +1706,7 @@ class _PanenPageState extends State<PanenPage> {
   Future<void> _hapusTerpilih() async {
     if (selected.isEmpty) return;
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Hapus ${selected.length} data panen terpilih?'),
@@ -1583,6 +1793,7 @@ class _PanenPageState extends State<PanenPage> {
     }
 
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
@@ -1673,6 +1884,7 @@ class _PanenPageState extends State<PanenPage> {
 
   Future<void> _hapus(Map<String, dynamic> m) async {
     final ok = await showDialog<bool>(
+      barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Hapus Blok ${m['blok']}?'),
