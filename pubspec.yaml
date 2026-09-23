@@ -24,6 +24,7 @@ dependencies:
   android_id: ^0.3.6
   encrypt: ^5.0.3
   receive_sharing_intent: ^1.8.0
+  google_fonts: ^6.2.1
   file_picker: ^8.1.2
 
 dev_dependencies:
