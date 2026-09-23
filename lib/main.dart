@@ -642,6 +642,128 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // ── LAYAR KUNCI (tutup buku tiap Senin) ──
+  Widget _layarKunci() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.lock_clock, size: 72, color: Colors.orange),
+          const SizedBox(height: 12),
+          Text('TUTUP BUKU - HARI SENIN',
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[800])),
+          const SizedBox(height: 12),
+          const Text(
+              'Semua fitur input DIKUNCI sampai backup dikirim ke owner.',
+              textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text(
+            VERSI_HAPUS_OTOMATIS
+                ? 'Setelah backup terkirim: input terbuka. Data bulan lalu TERHAPUS otomatis setiap tanggal 1.'
+                : 'Setelah export/backup: input terbuka kembali.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  VERSI_HAPUS_OTOMATIS ? _backup : _exportExcel,
+              icon: const Icon(Icons.table_chart),
+              label: Text(VERSI_HAPUS_OTOMATIS
+                  ? 'KIRIM BACKUP SEKARANG'
+                  : 'EXPORT TO EXCEL SEKARANG'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── RIWAYAT BULAN (Versi 2) ──
+  Future<void> _riwayat() async {
+    if (VERSI_HAPUS_OTOMATIS) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Versi ini tidak punya riwayat (data bulan lalu dihapus otomatis).')));
+      return;
+    }
+    if (!SesiBulan.riwayatTerbuka) {
+      final ok = await _mintaKodeRiwayat();
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Kode salah.')));
+        }
+        return;
+      }
+      SesiBulan.riwayatTerbuka = true;
+    }
+    final daftar = await DBHelper.bulanBulanAda();
+    final sekarang = DateFormat('yyyy-MM').format(DateTime.now());
+    final bulan = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Pilih Bulan'),
+        children: [
+          for (final b in daftar)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, b),
+              child: Row(children: [
+                Icon(b == sekarang ? Icons.location_on : Icons.history,
+                    size: 18,
+                    color: b == sekarang ? Colors.green : Colors.grey),
+                const SizedBox(width: 8),
+                Text(namaBulan(b),
+                    style: TextStyle(
+                        fontWeight:
+                            b == sekarang ? FontWeight.bold : FontWeight.normal)),
+              ]),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'RESET'),
+            child: const Text('← Kembali ke bulan berjalan',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (bulan == 'RESET') {
+      SesiBulan.bulanDipilih = null;
+    } else if (bulan != null) {
+      SesiBulan.bulanDipilih = bulan;
+    }
+    await _refreshCount();
+  }
+
+  Future<bool> _mintaKodeRiwayat() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AKSES RIWAYAT'),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Kode supervisor'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Buka')),
+        ],
+      ),
+    );
+    return ok == true && ctrl.text.trim() == KODE_RIWAYAT;
+  }
+
   // GANTI NAMA MANDOR HP INI
   Future<void> _profilMandor() async {
     final sekarang = await Profil.namaMandor();
