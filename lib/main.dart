@@ -419,8 +419,7 @@ class _HomePageState extends State<HomePage> {
     final panen = await DBHelper.allPanen();
     final mandor = await Profil.namaMandor();
     await ExcelExporter.exportAndShare(rows, tgl, panen: panen, mandor: mandor);
-        final hapusInfo = await TutupBuku.tandaiBackup();
-
+    final hapusInfo = await TutupBuku.tandaiExport();
     await _cekKunci();
     await _refreshCount();
     if (mounted) {
@@ -527,7 +526,8 @@ class _HomePageState extends State<HomePage> {
   // RESTORE: pilih file -> restore pintar (gabung/timpa/konflik)
   Future<void> _restore() async {
     final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom, allowedExtensions: ['bbos', 'json']);
+        type: FileType.custom,
+        allowedExtensions: ['bbos', 'json', 'bin']);
     final path = res?.files.single.path;
     if (path != null) await _restoreDariPath(path);
   }
