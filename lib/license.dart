@@ -102,7 +102,7 @@ class Profil {
 // KONFIGURASI VERSI APK — ganti nilai di bawah lalu rebuild:
 //   true  = VERSI 1: data bulan lalu TERHAPUS otomatis setelah export
 //   false = VERSI 2: data bulan lalu DISEMBUNYIKAN (kode riwayat)
-const bool VERSI_HAPUS_OTOMATIS = false;
+const bool VERSI_HAPUS_OTOMATIS = true;
 
 // Kode supervisor untuk melihat riwayat bulan lalu (Versi 2)
 const String KODE_RIWAYAT = 'hs123456';
@@ -145,7 +145,7 @@ class TutupBuku {
 // ═══ ENKRIPSI FILE BACKUP (kunci = KODE_RIWAYAT hs123456) ═══
 String enkripBackup(String json) {
   final key = enc.Key(Uint8List.fromList(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes));
-  final iv = enc.IV.fromLength(16);
+  final iv = enc.IV(Uint8List(16));
   final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
   return e.encrypt(json, iv: iv).base64;
 }
@@ -154,7 +154,7 @@ String enkripBackup(String json) {
 String? dekripBackup(String data) {
   try {
     final key = enc.Key(Uint8List.fromList(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes));
-    final iv = enc.IV.fromLength(16);
+    final iv = enc.IV(Uint8List(16));
     final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
     return e.decrypt64(data.trim(), iv: iv);
   } catch (_) {
