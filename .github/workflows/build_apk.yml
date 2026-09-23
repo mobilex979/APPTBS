@@ -57,6 +57,18 @@ jobs:
           -dontwarn androidx.**
           EOF
 
+      # Perbaiki perbedaan target Java/Kotlin plugin & NDK
+      - name: Fix JVM target & NDK
+        run: |
+          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
+          python3 - << 'PYEOF'
+          p = 'android/app/build.gradle.kts'
+          s = open(p).read()
+          if 'ndkVersion' not in s:
+              s = s.replace('android {', 'android {\n    ndkVersion = "27.0.12077973"', 1)
+          open(p, 'w').write(s)
+          PYEOF
+
       - run: flutter pub get
 
       - run: flutter build apk --release --obfuscate --split-debug-info=symbols
