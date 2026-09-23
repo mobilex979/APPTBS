@@ -732,7 +732,7 @@ class _HomePageState extends State<HomePage> {
     final panen = await DBHelper.allPanen();
     final beratOf = <int, double>{};
     for (final n in nota) {
-      beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0);
+      beratOf[n['id'] as int] = (n['netto_bersih'] as num? ?? 0).toDouble();
     }
     String bln(Map<String, dynamic> m) =>
         (m['tanggal'] ?? m['created_at'] ?? '????-??').toString().length >= 7
@@ -988,7 +988,7 @@ class _HomePageState extends State<HomePage> {
   // BUKA LAYAR PANEN + refresh home saat kembali
   Future<void> _bukaPanen() async {
     if (kunciBulanan) {
-      await showDialogNone(
+      await showDialog(
         barrierDismissible: false,
         context: context,
         builder: (ctx) => AlertDialog(
