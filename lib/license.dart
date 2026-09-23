@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_id/android_id.dart';
 import 'db_helper.dart';
+import 'package:encrypt/encrypt.dart' as enc;
 
 class License {
   static const String _secret = 'BUSLINBROS-RAHASIA-2026';
@@ -100,34 +101,58 @@ class Profil {
 // KONFIGURASI VERSI APK — ganti nilai di bawah lalu rebuild:
 //   true  = VERSI 1: data bulan lalu TERHAPUS otomatis setelah export
 //   false = VERSI 2: data bulan lalu DISEMBUNYIKAN (kode riwayat)
-const bool VERSI_HAPUS_OTOMATIS = false;
+const bool VERSI_HAPUS_OTOMATIS = true;
 
 // Kode supervisor untuk melihat riwayat bulan lalu (Versi 2)
 const String KODE_RIWAYAT = 'hs123456';
 
-// ═══ TUTUP BUKU BULANAN ═══
+// ═══ TUTUP BUKU: kunci TIAP SENIN, hapus data bulan lalu TIAP TANGGAL 1 ═══
 class TutupBuku {
-  static const String _keyLastExport = 'last_export_bulan';
+  static const String _keyLast = 'last_backup_minggu';
 
-  static String _blm(DateTime t) =>
-      '${t.year}-${t.month.toString().padLeft(2, '0')}';
+  static String _mingguIni(DateTime t) {
+    final monday = t.subtract(Duration(days: t.weekday - 1));
+    return '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+  }
 
-  /// true = tanggal 1 & bulan ini belum pernah export -> input dikunci
+  /// true = HARI SENIN & minggu ini belum kirim backup -> input dikunci
   static Future<bool> perluKunci() async {
     final p = await SharedPreferences.getInstance();
     final now = DateTime.now();
-    if (now.day != 1) return false;
-    return (p.getString(_keyLastExport) ?? '') != _blm(now);
+    if (now.weekday != 1) return false;
+    return (p.getString(_keyLast) ?? '') != _mingguIni(now);
   }
 
-  /// dipanggil setiap Export to Excel berhasil
-  static Future<String?> tandaiExport() async {
+  /// dipanggil setelah backup (V1) / export (V2) berhasil.
+  /// V1 + tanggal 1 -> hapus data bulan sebelumnya.
+  static Future<String?> tandaiBackup() async {
     final p = await SharedPreferences.getInstance();
     final now = DateTime.now();
-    await p.setString(_keyLastExport, _blm(now));
-    if (VERSI_HAPUS_OTOMATIS) {
-      return await DBHelper.hapusBulanSebelumnya(_blm(now));
+    await p.setString(_keyLast, _mingguIni(now));
+    if (VERSI_HAPUS_OTOMATIS && now.day == 1) {
+      return await DBHelper.hapusBulanSebelumnya(
+          '${now.year}-${now.month.toString().padLeft(2, '0')}');
     }
+    return null;
+  }
+}
+
+// ═══ ENKRIPSI FILE BACKUP (kunci = KODE_RIWAYAT hs123456) ═══
+String enkripBackup(String json) {
+  final key = enc.Key(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes);
+  final iv = enc.IV.fromLength(16);
+  final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+  return e.encrypt(json, iv: iv).base64;
+}
+
+/// return plaintext, atau null bila file bukan backup valid / kode beda
+String? dekripBackup(String data) {
+  try {
+    final key = enc.Key(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes);
+    final iv = enc.IV.fromLength(16);
+    final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    return e.decrypt64(data.trim(), iv: iv);
+  } catch (_) {
     return null;
   }
 }

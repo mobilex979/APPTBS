@@ -125,7 +125,7 @@ class DBHelper {
     await _ensurePanen();
     final dbx = await db;
     return {
-      'versi': 1,
+      'versi': 2,
       'aplikasi': 'BUSLIN BROS - Nota Timbang TBS',
       'waktu': DateTime.now().toIso8601String(),
       'nota': await dbx.query('nota'),
@@ -133,22 +133,103 @@ class DBHelper {
     };
   }
 
-  // id ikut dipulihkan agar link tiket_ids <-> nota tetap utuh
-  static Future<int> restoreAll(Map<String, dynamic> data) async {
+  /// Restore pintar (3 aturan):
+  ///  - no tiket baru              -> TAMBAH
+  ///  - no tiket sama + berat sama -> TIMPA otomatis
+  ///  - no tiket sama + berat BEDA -> daftar KONFLIK (user memilih)
+  /// Return {'tambah': n, 'timpa': n, 'konflik': [...]}
+  static Future<Map<String, dynamic>> restoreAll(Map<String, dynamic> data) async {
     await _ensurePanen();
     final dbx = await db;
-    await dbx.delete('nota');
-    await dbx.delete('panen');
-    var n = 0;
-    for (final row in (data['nota'] as List? ?? const [])) {
-      await dbx.insert('nota', Map<String, dynamic>.from(row));
-      n++;
+    final konflik = <Map<String, dynamic>>[];
+    final notaRows = (data['nota'] as List? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final panenRows = (data['panen'] as List? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+
+    final byId = <int, Map<String, dynamic>>{};
+    final byTiket = <String, int>{};
+    for (final m in await dbx.query('nota')) {
+      byId[m['id'] as int] = m;
+      final t = m['no_nota']?.toString() ?? '';
+      if (t.isNotEmpty) byTiket[t] = m['id'] as int;
     }
-    for (final row in (data['panen'] as List? ?? const [])) {
-      await dbx.insert('panen', Map<String, dynamic>.from(row));
-      n++;
+
+    final idMap = <int, int>{};
+    var nTambah = 0, nTimpa = 0;
+
+    for (final m in notaRows) {
+      final bid = m['id'] as int;
+      final tiket = m['no_nota']?.toString() ?? '';
+      final bbBackup = (m['netto_bersih'] as num?) ?? 0;
+
+      int? targetId;
+      if (byId.containsKey(bid)) {
+        targetId = bid;
+      } else if (tiket.isNotEmpty && byTiket.containsKey(tiket)) {
+        targetId = byTiket[tiket]!;
+      }
+
+      if (targetId == null) {
+        await dbx.insert('nota', m);
+        byId[bid] = m;
+        if (tiket.isNotEmpty) byTiket[tiket] = bid;
+        idMap[bid] = bid;
+        nTambah++;
+      } else {
+        final lama = byId[targetId]!;
+        final bbLama = (lama['netto_bersih'] as num?) ?? 0;
+        final beda = (bbLama - bbBackup).abs() >= 0.5;
+        if (beda) {
+          konflik.add({'backup': m, 'lama': lama});
+        } else if (targetId != bid) {
+          await dbx.delete('nota', where: 'id = ?', whereArgs: [targetId]);
+          await dbx.insert('nota', m);
+          byTiket[tiket] = bid;
+          nTimpa++;
+        } else {
+          await dbx.update('nota', m, where: 'id = ?', whereArgs: [bid]);
+          nTimpa++;
+        }
+        idMap[bid] = bid;
+      }
     }
-    return n;
+
+    for (final m in panenRows) {
+      final ids = (m['tiket_ids']?.toString() ?? '')
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .whereType<int>()
+          .map((e) => idMap[e] ?? e)
+          .join(',');
+      m['tiket_ids'] = ids;
+      final pid = m['id'] as int;
+      final ada = await dbx
+          .rawQuery('SELECT COUNT(*) c FROM panen WHERE id = ?', [pid]);
+      final n = (ada.first['c'] as int?) ?? 0;
+      if (n > 0) {
+        await dbx.update('panen', m, where: 'id = ?', whereArgs: [pid]);
+      } else {
+        await dbx.insert('panen', m);
+      }
+    }
+
+    return {'tambah': nTambah, 'timpa': nTimpa, 'konflik': konflik};
+  }
+
+  /// terapkan keputusan konflik: pilih[i] true = pakai data BACKUP
+  static Future<void> selesaikanKonflik(
+      List<Map<String, dynamic>> konflik, List<bool> pilih) async {
+    final dbx = await db;
+    for (var i = 0; i < konflik.length; i++) {
+      if (!pilih[i]) continue;
+      final lama = konflik[i]['lama'] as Map<String, dynamic>;
+      final backup = Map<String, dynamic>.from(konflik[i]['backup'] as Map);
+      await dbx.delete('nota', where: 'id = ?', whereArgs: [lama['id']]);
+      await dbx.insert('nota', backup);
+    }
   }
 
   // daftar nomor tiket yang sudah tersimpan (untuk screening anti-double)

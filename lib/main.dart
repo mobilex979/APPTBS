@@ -1,4 +1,5 @@
 // Aplikasi Buslin Bross - Nota Timbang TBS (layar utama)
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -137,6 +139,7 @@ class _HomePageState extends State<HomePage> {
   final List<Nota> draft = [];   // hasil OCR yang belum disimpan
   bool loading = false;
   bool kunciBulanan = false;
+  StreamSubscription<List<SharedMediaFile>>? _subShare;
   int savedCount = 0;
   List<Map<String, dynamic>> savedRows = [];
   List<Map<String, dynamic>> panenRows = [];
@@ -147,6 +150,24 @@ class _HomePageState extends State<HomePage> {
     _refreshCount();
     _loadSaved();
     _cekKunci();
+    // buka file backup langsung dari WA / file manager (Versi 2)
+    if (!VERSI_HAPUS_OTOMATIS) {
+      ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+        final path = files.isNotEmpty ? files.first.path : null;
+        if (path != null) _restoreDariPath(path);
+      });
+      _subShare =
+          ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+        final path = files.isNotEmpty ? files.first.path : null;
+        if (path != null) _restoreDariPath(path);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _subShare?.cancel();
+    super.dispose();
   }
 
   Future<void> _cekKunci() async {
@@ -474,178 +495,151 @@ class _HomePageState extends State<HomePage> {
 
   // INPUT MANUAL (NEW): ketik data timbang tanpa kamera/galeri
   
-  // BACKUP seluruh data (nota + panen) ke file JSON -> share ke WA/email
+  // BACKUP seluruh data -> file TERENKRIPSI (.bbos) -> share ke WA/email
   Future<void> _backup() async {
     try {
       final data = await DBHelper.backupAll();
       final dir = await getExternalStorageDirectory()
           ?? await getApplicationDocumentsDirectory();
       final tgl = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final f = File('${dir.path}/backup_buslin_$tgl.json');
-      await f.writeAsString(jsonEncode(data), flush: true);
+      final f = File('${dir.path}/backup_buslin_$tgl.bbos');
+      await f.writeAsString(enkripBackup(jsonEncode(data)), flush: true);
       await Share.shareXFiles([XFile(f.path)],
-          text: 'Backup data BUSLIN BROS ($tgl). Simpan baik-baik untuk restore.');
+          text: 'Backup data BUSLIN BROS ($tgl) - file terkunci, hanya bisa dibuka owner.');
+      if (VERSI_HAPUS_OTOMATIS) {
+        final hapusInfo = await TutupBuku.tandaiBackup();
+        await _cekKunci();
+        await _refreshCount();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(hapusInfo != null
+                  ? 'Backup terkirim. $hapusInfo.'
+                  : 'Backup terkirim. Input terbuka kembali.')));
+        }
+      }
     } catch (e) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Backup gagal: $e')));
     }
   }
 
-  // RESTORE data dari file backup (.json)
+  // RESTORE: pilih file -> restore pintar (gabung/timpa/konflik)
   Future<void> _restore() async {
+    final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom, allowedExtensions: ['bbos', 'json']);
+    final path = res?.files.single.path;
+    if (path != null) await _restoreDariPath(path);
+  }
+
+  // restore dari path file (dipakai file picker & buka-langsung-dari-WA)
+  Future<void> _restoreDariPath(String path) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Restore Data?'),
-        content: const Text('Seluruh data saat ini akan DIGANTI dengan isi '
-            'file backup. Lanjutkan?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Restore')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      final res = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: ['json']);
-      final path = res?.files.single.path;
-      if (path == null) return;
-      final data =
-          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
-      final n = await DBHelper.restoreAll(data);
-      await _refreshCount();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Restore berhasil: $n baris dipulihkan.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Restore gagal: $e')));
-      }
-    }
-  }
-
-  // ── LAYAR KUNCI BULANAN (tutup buku) ──
-  Widget _layarKunci() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.lock_clock, size: 72, color: Colors.orange),
-          const SizedBox(height: 12),
-          Text('TUTUP BUKU BULANAN',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange[800])),
-          const SizedBox(height: 12),
-          const Text(
-              'Tanggal 1 - semua fitur input DIKUNCI sampai\nExport to Excel dilakukan.',
-              textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(
-            VERSI_HAPUS_OTOMATIS
-                ? 'Setelah export: input terbuka otomatis & data bulan lalu TERHAPUS otomatis.'
-                : 'Setelah export: input terbuka otomatis. Data bulan lalu tetap tersimpan.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _exportExcel,
-              icon: const Icon(Icons.table_chart),
-              label: const Text('EXPORT TO EXCEL SEKARANG'),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  // ── RIWAYAT BULAN (Versi 2) ──
-  Future<void> _riwayat() async {
-    if (VERSI_HAPUS_OTOMATIS) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Versi ini tidak punya riwayat (data bulan lalu dihapus otomatis).')));
-      return;
-    }
-    if (!SesiBulan.riwayatTerbuka) {
-      final ok = await _mintaKodeRiwayat();
-      if (!ok) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Kode salah.')));
-        }
-        return;
-      }
-      SesiBulan.riwayatTerbuka = true;
-    }
-    final daftar = await DBHelper.bulanBulanAda();
-    final sekarang = DateFormat('yyyy-MM').format(DateTime.now());
-    final bulan = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Pilih Bulan'),
-        children: [
-          for (final b in daftar)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, b),
-              child: Row(children: [
-                Icon(b == sekarang ? Icons.location_on : Icons.history,
-                    size: 18,
-                    color: b == sekarang ? Colors.green : Colors.grey),
-                const SizedBox(width: 8),
-                Text(namaBulan(b),
-                    style: TextStyle(
-                        fontWeight:
-                            b == sekarang ? FontWeight.bold : FontWeight.normal)),
-              ]),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'RESET'),
-            child: const Text('← Kembali ke bulan berjalan',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (bulan == 'RESET') {
-      SesiBulan.bulanDipilih = null;
-    } else if (bulan != null) {
-      SesiBulan.bulanDipilih = bulan;
-    }
-    await _refreshCount();
-  }
-
-  Future<bool> _mintaKodeRiwayat() async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('AKSES RIWAYAT'),
-        content: TextField(
-          controller: ctrl,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Kode supervisor'),
-        ),
+        title: const Text('Restore Backup?'),
+        content: Text('File: ${path.split('/').last}\n'
+            'Tiket baru ditambah, tiket sama (berat sama) ditimpa otomatis.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Batal')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Buka')),
+              child: const Text('Restore')),
         ],
       ),
     );
-    return ok == true && ctrl.text.trim() == KODE_RIWAYAT;
+    if (ok != true) return;
+    try {
+      final raw = await File(path).readAsString();
+      var jsonStr = dekripBackup(raw);
+      jsonStr ??= raw;
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final hasil = await DBHelper.restoreAll(data);
+      await _refreshCount();
+      final k = (hasil['konflik'] as List<Map<String, dynamic>>?) ?? [];
+      if (k.isNotEmpty && mounted) {
+        await _konflikDialog(k);
+        await _refreshCount();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Restore selesai: +${hasil['tambah']} tiket, timpa ${hasil['timpa']}'
+                '${k.isNotEmpty ? ', konflik ${k.length} sesuai pilihan' : ''}.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Restore gagal: file bukan backup valid / rusak.')));
+      }
+    }
+  }
+
+  // dialog penyelesaian konflik berat bersih
+  Future<void> _konflikDialog(List<Map<String, dynamic>> konflik) async {
+    final pilih = List<bool>.filled(konflik.length, false);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text('⚠ KONFLIK - ${konflik.length} TIKET'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 320,
+            child: ListView(children: [
+              for (var i = 0; i < konflik.length; i++)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Tiket ${konflik[i]['backup']['no_nota']}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                              'Tersimpan: ${fmtNum(konflik[i]['lama']['netto_bersih'])} kg'
+                              '  vs  Backup: ${fmtNum(konflik[i]['backup']['netto_bersih'])} kg'),
+                          Row(children: [
+                            Expanded(
+                              child: RadioListTile<bool>(
+                                dense: true,
+                                value: false,
+                                groupValue: pilih[i],
+                                onChanged: (v) => setD(() => pilih[i] = false),
+                                title: const Text('Tersimpan',
+                                    style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                            Expanded(
+                              child: RadioListTile<bool>(
+                                dense: true,
+                                value: true,
+                                groupValue: pilih[i],
+                                onChanged: (v) => setD(() => pilih[i] = true),
+                                title: const Text('Backup',
+                                    style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                          ]),
+                        ]),
+                  ),
+                ),
+            ]),
+          ),
+          actions: [
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('TERAPKAN & RESTORE')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await DBHelper.selesaikanKonflik(konflik, pilih);
+    }
   }
 
   // GANTI NAMA MANDOR HP INI
@@ -963,9 +957,10 @@ class _HomePageState extends State<HomePage> {
                     child:
                         Text('\ud83d\udd13 Lihat Data Bulan Sebelumnya')),
               PopupMenuDivider(),
-              PopupMenuItem(
-                  value: 'export',
-                  child: Text('\ud83d\udcca Export to Excel')),
+              if (!VERSI_HAPUS_OTOMATIS)
+                const PopupMenuItem(
+                    value: 'export',
+                    child: Text('\ud83d\udcca Export to Excel')),
               PopupMenuItem(
                   value: 'backup', child: Text('\ud83d\udcbe Backup Data')),
               PopupMenuItem(
