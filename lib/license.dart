@@ -102,7 +102,7 @@ class Profil {
 // KONFIGURASI VERSI APK — ganti nilai di bawah lalu rebuild:
 //   true  = VERSI 1: data bulan lalu TERHAPUS otomatis setelah export
 //   false = VERSI 2: data bulan lalu DISEMBUNYIKAN (kode riwayat)
-const bool VERSI_HAPUS_OTOMATIS = false;
+const bool VERSI_HAPUS_OTOMATIS = true;
 
 // Kode supervisor untuk melihat riwayat bulan lalu (Versi 2)
 const String KODE_RIWAYAT = 'hs123456';
@@ -123,6 +123,9 @@ class TutupBuku {
     if (now.weekday != 1) return false;
     return (p.getString(_keyLast) ?? '') != _mingguIni(now);
   }
+
+  // alias kompatibilitas: nama lama tandaExport (jangan dipakai di kode baru)
+  static Future<String?> tandaExport() => tandaiBackup();
 
   /// dipanggil setelah backup (V1) / export (V2) berhasil.
   /// V1 + tanggal 1 -> hapus data bulan sebelumnya.
