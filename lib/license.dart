@@ -3,6 +3,7 @@
 // Kode dari HP lain TIDAK akan berfungsi.
 // Generate kode: APK Generator (HP owner) atau gen_licensi.py.
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_id/android_id.dart';
@@ -139,7 +140,7 @@ class TutupBuku {
 
 // ═══ ENKRIPSI FILE BACKUP (kunci = KODE_RIWAYAT hs123456) ═══
 String enkripBackup(String json) {
-  final key = enc.Key(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes);
+  final key = enc.Key(Uint8List.fromList(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes));
   final iv = enc.IV.fromLength(16);
   final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
   return e.encrypt(json, iv: iv).base64;
@@ -148,7 +149,7 @@ String enkripBackup(String json) {
 /// return plaintext, atau null bila file bukan backup valid / kode beda
 String? dekripBackup(String data) {
   try {
-    final key = enc.Key(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes);
+    final key = enc.Key(Uint8List.fromList(sha256.convert(utf8.encode(KODE_RIWAYAT)).bytes));
     final iv = enc.IV.fromLength(16);
     final e = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
     return e.decrypt64(data.trim(), iv: iv);
