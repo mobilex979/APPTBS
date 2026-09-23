@@ -79,6 +79,35 @@ class DBHelper {
     return (await db).query('panen', orderBy: 'id DESC');
   }
 
+  // ═══ TUTUP BUKU ═══
+  /// hapus data bulan sebelumnya; return keterangan jumlah yg dihapus
+  static Future<String> hapusBulanSebelumnya(String bulanIni) async {
+    await _ensurePanen();
+    final dbx = await db;
+    final n1 = await dbx.delete('nota',
+        where: "substr(COALESCE(tanggal, created_at), 1, 7) < ?",
+        whereArgs: [bulanIni]);
+    final n2 = await dbx.delete('panen',
+        where: "substr(COALESCE(tanggal, created_at), 1, 7) < ?",
+        whereArgs: [bulanIni]);
+    return 'nota $n1 & panen $n2 (bulan lalu) terhapus';
+  }
+
+  /// daftar bulan yang punya data (untuk pemilih riwayat)
+  static Future<List<String>> bulanBulanAda() async {
+    await _ensurePanen();
+    final dbx = await db;
+    final s = <String>{};
+    for (final t in ['nota', 'panen']) {
+      final r = await dbx.rawQuery(
+          "SELECT DISTINCT substr(COALESCE(tanggal, created_at), 1, 7) b "
+          "FROM $t WHERE COALESCE(tanggal, created_at) IS NOT NULL");
+      s.addAll(r.map((m) => m['b'].toString()));
+    }
+    final list = s.toList()..sort();
+    return list.reversed.toList();
+  }
+
   // ═══ SARAN OTOMATIS (Opsi A): nilai unik dari riwayat nota ═══
   static const _kolomSaran = {'sopir', 'nopol', 'supplier', 'perusahaan'};
 

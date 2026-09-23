@@ -57,6 +57,30 @@ ThemeData temaAplikasi(int pilihan) {
   }
 }
 
+// tanggal: ISO (YYYY-MM-DD) <-> tampilan (DD-MM-YYYY)
+String isoKeTampilan(String? iso) {
+  if (iso == null || iso.length < 10) return iso ?? '';
+  return '${iso.substring(8, 10)}-${iso.substring(5, 7)}-${iso.substring(0, 4)}';
+}
+
+String? tampilanKeIso(String t) {
+  final p = t.trim().split('-');
+  if (p.length == 3) {
+    return '${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}';
+  }
+  return t.trim().isEmpty ? null : t.trim();
+}
+
+// '2026-09' -> 'September 2026'
+String namaBulan(String ym) {
+  const bln = ['Januari','Februari','Maret','April','Mei','Juni','Juli',
+      'Agustus','September','Oktober','November','Desember'];
+  final p = ym.split('-');
+  if (p.length != 2) return ym;
+  final b = int.tryParse(p[1]);
+  return '${b != null && b >= 1 && b <= 12 ? bln[b - 1] : p[1]} ${p[0]}';
+}
+
 // Field dengan SARAN OTOMATIS dari riwayat (Opsi A) + huruf otomatis KAPITAL
 Widget saranField({
   required String label,
@@ -112,6 +136,7 @@ class _HomePageState extends State<HomePage> {
   final picker = ImagePicker();
   final List<Nota> draft = [];   // hasil OCR yang belum disimpan
   bool loading = false;
+  bool kunciBulanan = false;
   int savedCount = 0;
   List<Map<String, dynamic>> savedRows = [];
   List<Map<String, dynamic>> panenRows = [];
@@ -121,6 +146,12 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _refreshCount();
     _loadSaved();
+    _cekKunci();
+  }
+
+  Future<void> _cekKunci() async {
+    final k = await TutupBuku.perluKunci();
+    if (mounted) setState(() => kunciBulanan = k);
   }
 
   // format ribuan Indonesia: 8460 -> "8.460"
@@ -130,10 +161,20 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadSaved() => _refreshCount();
 
   Future<void> _refreshCount() async {
-    final c = await DBHelper.count();
-    savedRows = await DBHelper.all();
-    panenRows = await DBHelper.allPanen();
-    if (mounted) setState(() => savedCount = c);
+    var all = await DBHelper.all();
+    var pAll = await DBHelper.allPanen();
+    if (!VERSI_HAPUS_OTOMATIS && SesiBulan.bulanDipilih != null) {
+      final bl = SesiBulan.bulanDipilih!;
+      bool cocok(Map<String, dynamic> m) =>
+          (m['tanggal'] ?? m['created_at'] ?? '')
+              .toString()
+              .startsWith(bl);
+      all = all.where(cocok).toList();
+      pAll = pAll.where(cocok).toList();
+    }
+    savedRows = all;
+    panenRows = pAll;
+    if (mounted) setState(() => savedCount = all.length);
   }
 
   // Nilai kualitas hasil OCR: keyword nota + jumlah field berhasil diekstrak
@@ -277,7 +318,7 @@ class _HomePageState extends State<HomePage> {
   // FORM INPUT MANUAL (tanpa kamera/galeri)
   Future<void> _inputManual() async {
     final tgl = TextEditingController(
-        text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+        text: isoKeTampilan(DateFormat('yyyy-MM-dd').format(DateTime.now())));
     final noNota = TextEditingController();
     final perusahaan = TextEditingController();
     final supplier = TextEditingController();
@@ -294,7 +335,7 @@ class _HomePageState extends State<HomePage> {
         content: SingleChildScrollView(
           child: Column(children: [
             TextField(controller: tgl,
-                decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
+                decoration: const InputDecoration(labelText: 'Tanggal (DD-MM-YYYY)')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
             saranField(
@@ -327,7 +368,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (ok == true) {
       final n = Nota()
-        ..tanggal = tgl.text.trim().isEmpty ? null : tgl.text.trim()
+        ..tanggal = tampilanKeIso(tgl.text)
         ..noNota = noNota.text.trim().isEmpty ? null : noNota.text.trim()
         ..perusahaan = perusahaan.text.trim().isEmpty ? null : perusahaan.text.trim()
         ..supplier = supplier.text.trim().isEmpty ? null : supplier.text.trim()
@@ -357,17 +398,25 @@ class _HomePageState extends State<HomePage> {
     final panen = await DBHelper.allPanen();
     final mandor = await Profil.namaMandor();
     await ExcelExporter.exportAndShare(rows, tgl, panen: panen, mandor: mandor);
+    final hapusInfo = await TutupBuku.tandaiExport();
+    await _cekKunci();
+    await _refreshCount();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(hapusInfo != null
+              ? 'Export OK. $hapusInfo.'
+              : 'Export OK. Input terbuka kembali.')));
+    }
   }
 
   Future<void> _edit(Nota n) async {
     final perusahaan = TextEditingController(text: n.perusahaan);
-    final tgl = TextEditingController(text: n.tanggal);
+    final tgl = TextEditingController(text: isoKeTampilan(n.tanggal));
     final supplier = TextEditingController(text: n.supplier);
     final bruto = TextEditingController(text: n.bruto?.toString() ?? '');
     final tara = TextEditingController(text: n.tara?.toString() ?? '');
     final netto = TextEditingController(text: n.netto?.toString() ?? '');
     final potongan = TextEditingController(text: n.potongan?.toString() ?? '');
-    final berat = TextEditingController(text: n.berat?.toString() ?? '');
     final noNota = TextEditingController(text: n.noNota);
     final nopol = TextEditingController(text: n.nopol);
     final sopir = TextEditingController(text: n.sopir);
@@ -378,7 +427,7 @@ class _HomePageState extends State<HomePage> {
         content: SingleChildScrollView(
           child: Column(children: [
             TextField(controller: tgl,
-                decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
+                decoration: const InputDecoration(labelText: 'Tanggal (DD-MM-YYYY)')),
             saranField(
                 label: 'Perusahaan/PKS',
                 ctrl: perusahaan,
@@ -396,8 +445,6 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Netto (kg)')),
             TextField(controller: potongan, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Potongan (kg)')),
-            TextField(controller: berat, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Berat Bersih (kg)')),
           ]),
         ),
         actions: [
@@ -410,7 +457,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (ok == true) {
       setState(() {
-        n.tanggal = tgl.text.trim().isEmpty ? null : tgl.text.trim();
+        n.tanggal = tampilanKeIso(tgl.text);
         n.perusahaan = perusahaan.text.isEmpty ? null : perusahaan.text;
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
@@ -420,7 +467,6 @@ class _HomePageState extends State<HomePage> {
         n.tara = double.tryParse(tara.text);
         n.netto = double.tryParse(netto.text);
         n.potongan = double.tryParse(potongan.text);
-        n.berat = double.tryParse(berat.text);
         n.catatan = n.perluCek ? 'CEK MANUAL' : '';
       });
     }
@@ -483,6 +529,125 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // ── LAYAR KUNCI BULANAN (tutup buku) ──
+  Widget _layarKunci() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.lock_clock, size: 72, color: Colors.orange),
+          const SizedBox(height: 12),
+          Text('TUTUP BUKU BULANAN',
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[800])),
+          const SizedBox(height: 12),
+          const Text(
+              'Tanggal 1 - semua fitur input DIKUNCI sampai\nExport to Excel dilakukan.',
+              textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text(
+            VERSI_HAPUS_OTOMATIS
+                ? 'Setelah export: input terbuka otomatis & data bulan lalu TERHAPUS otomatis.'
+                : 'Setelah export: input terbuka otomatis. Data bulan lalu tetap tersimpan.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _exportExcel,
+              icon: const Icon(Icons.table_chart),
+              label: const Text('EXPORT TO EXCEL SEKARANG'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── RIWAYAT BULAN (Versi 2) ──
+  Future<void> _riwayat() async {
+    if (VERSI_HAPUS_OTOMATIS) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Versi ini tidak punya riwayat (data bulan lalu dihapus otomatis).')));
+      return;
+    }
+    if (!SesiBulan.riwayatTerbuka) {
+      final ok = await _mintaKodeRiwayat();
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Kode salah.')));
+        }
+        return;
+      }
+      SesiBulan.riwayatTerbuka = true;
+    }
+    final daftar = await DBHelper.bulanBulanAda();
+    final sekarang = DateFormat('yyyy-MM').format(DateTime.now());
+    final bulan = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Pilih Bulan'),
+        children: [
+          for (final b in daftar)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, b),
+              child: Row(children: [
+                Icon(b == sekarang ? Icons.location_on : Icons.history,
+                    size: 18,
+                    color: b == sekarang ? Colors.green : Colors.grey),
+                const SizedBox(width: 8),
+                Text(namaBulan(b),
+                    style: TextStyle(
+                        fontWeight:
+                            b == sekarang ? FontWeight.bold : FontWeight.normal)),
+              ]),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'RESET'),
+            child: const Text('← Kembali ke bulan berjalan',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (bulan == 'RESET') {
+      SesiBulan.bulanDipilih = null;
+    } else if (bulan != null) {
+      SesiBulan.bulanDipilih = bulan;
+    }
+    await _refreshCount();
+  }
+
+  Future<bool> _mintaKodeRiwayat() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AKSES RIWAYAT'),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Kode supervisor'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Buka')),
+        ],
+      ),
+    );
+    return ok == true && ctrl.text.trim() == KODE_RIWAYAT;
+  }
+
   // GANTI NAMA MANDOR HP INI
   Future<void> _profilMandor() async {
     final sekarang = await Profil.namaMandor();
@@ -518,6 +683,28 @@ class _HomePageState extends State<HomePage> {
 
   // BUKA LAYAR PANEN + refresh home saat kembali
   Future<void> _bukaPanen() async {
+    if (kunciBulanan) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('\ud83d\udd12 Input Dikunci'),
+          content: const Text(
+              'Tutup buku bulanan: export dulu sebelum input panen.'),
+          actions: [
+            FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _exportExcel();
+                },
+                child: const Text('Export Sekarang')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Nanti')),
+          ],
+        ),
+      );
+      return;
+    }
     await Navigator.push(context,
         MaterialPageRoute(builder: (_) => const PanenPage()));
     await _refreshCount();   // update Total jjg & Avg kg/JJG di home
@@ -532,8 +719,79 @@ class _HomePageState extends State<HomePage> {
     await _loadSaved();
   }
 
+  Widget _isiTabel() {
+    return SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: SingleChildScrollView(
+      child: DataTable(
+        headingRowColor: WidgetStateProperty.all(Colors.green[50]),
+        columns: const [
+          DataColumn(label: Text('No Tiket')),
+          DataColumn(label: Text('Tanggal')),
+          DataColumn(label: Text('Plat No')),
+          DataColumn(label: Text('Perusahaan')),
+          DataColumn(label: Text('Supir')),
+          DataColumn(label: Text('Bruto'), numeric: true),
+          DataColumn(label: Text('Tarra'), numeric: true),
+          DataColumn(label: Text('Potongan'), numeric: true),
+          DataColumn(label: Text('Berat Bersih'), numeric: true),
+        ],
+        rows: [
+          for (final m in savedRows)
+            DataRow(cells: [
+              DataCell(SelectableText(m['no_nota']?.toString() ?? '-')),
+              DataCell(SelectableText(() {
+                final t = m['tanggal']?.toString();
+                return (t != null && t.contains('-'))
+                    ? t.split('-').reversed.join('-')
+                    : (t ?? '-');
+              }())),
+              DataCell(SelectableText(m['nopol']?.toString() ?? '-')),
+              DataCell(SelectableText(m['perusahaan']?.toString() ?? '-')),
+              DataCell(SelectableText(m['sopir']?.toString() ?? '-')),
+              DataCell(SelectableText(fmtNum(m['bruto']))),
+              DataCell(SelectableText(fmtNum(m['tara']))),
+              DataCell(SelectableText(fmtNum(m['potongan']))),
+              DataCell(SelectableText(fmtNum(m['netto_bersih']),
+                  style: const TextStyle(fontWeight: FontWeight.bold))),
+            ]),
+        ],
+      ),
+    ),
+  ),
+  }
   // TABEL REKAP DATA TERSIMPAN di halaman utama
   Widget _buildRekap() {
+    if (!VERSI_HAPUS_OTOMATIS && SesiBulan.bulanDipilih != null) {
+      return Column(children: [
+        Container(
+          width: double.infinity,
+          color: Colors.amber[100],
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(children: [
+            const Icon(Icons.history, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('Mode riwayat: ${namaBulan(SesiBulan.bulanDipilih!)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () {
+                SesiBulan.bulanDipilih = null;
+                _refreshCount();
+              },
+              child: const Text('← Bulan ini'),
+            ),
+          ]),
+        ),
+        const Divider(),
+        Expanded(
+          child: savedRows.isEmpty
+              ? const Center(child: Text('Tidak ada data pada bulan ini.'))
+              : _isiTabel(),
+        ),
+      ]);
+    }
     if (savedRows.isEmpty) {
       return const Center(child: Text(
           'Belum ada data. Ambil foto nota atau pilih banyak foto dari galeri.',
@@ -609,48 +867,8 @@ class _HomePageState extends State<HomePage> {
         );
       }(),
       const Divider(),
-      Expanded(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SingleChildScrollView(
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(Colors.green[50]),
-              columns: const [
-                DataColumn(label: Text('No Tiket')),
-                DataColumn(label: Text('Tanggal')),
-                DataColumn(label: Text('Plat No')),
-                DataColumn(label: Text('Perusahaan')),
-                DataColumn(label: Text('Supir')),
-                DataColumn(label: Text('Bruto'), numeric: true),
-                DataColumn(label: Text('Tarra'), numeric: true),
-                DataColumn(label: Text('Potongan'), numeric: true),
-                DataColumn(label: Text('Berat Bersih'), numeric: true),
-              ],
-              rows: [
-                for (final m in savedRows)
-                  DataRow(cells: [
-                    DataCell(SelectableText(m['no_nota']?.toString() ?? '-')),
-                    DataCell(SelectableText(() {
-                      final t = m['tanggal']?.toString();
-                      return (t != null && t.contains('-'))
-                          ? t.split('-').reversed.join('-')
-                          : (t ?? '-');
-                    }())),
-                    DataCell(SelectableText(m['nopol']?.toString() ?? '-')),
-                    DataCell(SelectableText(m['perusahaan']?.toString() ?? '-')),
-                    DataCell(SelectableText(m['sopir']?.toString() ?? '-')),
-                    DataCell(SelectableText(fmtNum(m['bruto']))),
-                    DataCell(SelectableText(fmtNum(m['tara']))),
-                    DataCell(SelectableText(fmtNum(m['potongan']))),
-                    DataCell(SelectableText(fmtNum(m['netto_bersih']),
-                        style: const TextStyle(fontWeight: FontWeight.bold))),
-                  ]),
-              ],
-            ),
-          ),
-        ),
-      ),
-      const Padding(
+        Expanded(child: _isiTabel()),
+    const Padding(
         padding: EdgeInsets.all(8),
         child: Text('Klik "Tersimpan" di atas untuk review & edit detail',
             style: TextStyle(fontSize: 11, color: Colors.grey)),
@@ -660,6 +878,24 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (kunciBulanan) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('BUSLIN BROS',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Aplikasi Tbs',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.normal)),
+            ],
+          ),
+        ),
+        body: _layarKunci(),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Column(
@@ -697,6 +933,9 @@ class _HomePageState extends State<HomePage> {
                 case 'mandor':
                   _profilMandor();
                   break;
+                case 'riwayat':
+                  _riwayat();
+                  break;
                 case 'export':
                   _exportExcel();
                   break;
@@ -718,6 +957,11 @@ class _HomePageState extends State<HomePage> {
               PopupMenuItem(
                   value: 'mandor',
                   child: Text('\ud83d\udc64 Ganti Mandor')),
+              if (!VERSI_HAPUS_OTOMATIS)
+                const PopupMenuItem(
+                    value: 'riwayat',
+                    child:
+                        Text('\ud83d\udd13 Lihat Data Bulan Sebelumnya')),
               PopupMenuDivider(),
               PopupMenuItem(
                   value: 'export',
@@ -878,7 +1122,6 @@ class _SavedPageState extends State<SavedPage> {
     final bruto = TextEditingController(text: m['bruto']?.toString());
     final tara = TextEditingController(text: m['tara']?.toString());
     final netto = TextEditingController(text: m['netto']?.toString());
-    final berat = TextEditingController(text: m['netto_bersih']?.toString());
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -900,8 +1143,6 @@ class _SavedPageState extends State<SavedPage> {
                 decoration: const InputDecoration(labelText: 'Tara (kg)')),
             TextField(controller: netto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Netto (kg)')),
-            TextField(controller: berat, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Berat Bersih (kg)')),
           ]),
         ),
         actions: [
@@ -916,7 +1157,6 @@ class _SavedPageState extends State<SavedPage> {
       final b = double.tryParse(bruto.text);
       final t = double.tryParse(tara.text);
       final n = double.tryParse(netto.text);
-      final bb = double.tryParse(berat.text);
       await DBHelper.update(m['id'] as int, {
         'perusahaan': perusahaan.text.isEmpty ? null : perusahaan.text,
         'supplier': supplier.text.isEmpty ? null : supplier.text,
@@ -924,7 +1164,8 @@ class _SavedPageState extends State<SavedPage> {
         'nopol': NotaParser.normPlat(nopol.text),
         'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
-        'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
+        'netto_bersih':
+            (n != null) ? n - ((m['potongan'] as num? ?? 0)) : null,
       });
       await _load();
       if (mounted) {
@@ -1065,14 +1306,23 @@ class _PanenPageState extends State<PanenPage> {
       v == null ? '-' : NumberFormat('#,##0', 'id_ID').format(v);
 
   Future<void> _load() async {
-    rows = await DBHelper.allPanen();
-    notaRows = await DBHelper.all();
+    var r = await DBHelper.allPanen();
+    var n = await DBHelper.all();
+    if (!VERSI_HAPUS_OTOMATIS && SesiBulan.bulanDipilih != null) {
+      final bl = SesiBulan.bulanDipilih!;
+      bool cocok(Map<String, dynamic> m) =>
+          (m['tanggal'] ?? m['created_at'] ?? '').toString().startsWith(bl);
+      r = r.where(cocok).toList();
+      n = n.where(cocok).toList();
+    }
+    rows = r;
+    notaRows = n;
     if (mounted) setState(() {});
   }
 
   // edit data panen setelah tersimpan (blok, janjang, dll.)
   Future<void> _editPanen(Map<String, dynamic> p) async {
-    final tgl = TextEditingController(text: p['tanggal']?.toString());
+    final tgl = TextEditingController(text: isoKeTampilan(p['tanggal']?.toString()));
     final blokC = TextEditingController(text: p['blok']?.toString());
     final jjgC = TextEditingController(text: p['jjg']?.toString());
     final mandorC = TextEditingController(text: p['mandor']?.toString());
@@ -1111,7 +1361,7 @@ class _PanenPageState extends State<PanenPage> {
         return;
       }
       await DBHelper.updatePanen(p['id'] as int, {
-        'tanggal': tgl.text,
+        'tanggal': tampilanKeIso(tgl.text),
         'blok': blokC.text.trim(),
         'jjg': j,
         'mandor': mandorC.text.trim().isEmpty ? null : mandorC.text.trim(),

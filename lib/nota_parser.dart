@@ -153,7 +153,6 @@ class NotaParser {
       ..tara = _num(_get('tara', text))
       ..netto = _num(_get('netto', text))
       ..potongan = _num(_get('potongan', text))
-      ..berat = _num(_get('berat', text) ?? _get('netto_bersih', text))
       ..sortasi = _num(_get('sortasi', text))
       ..jjg = _num(_get('jjg', text))
       ..harga = _num(_get2('harga', text))

@@ -94,3 +94,45 @@ class Profil {
     await p.setString(_keyMandor, nama.trim());
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// KONFIGURASI VERSI APK — ganti nilai di bawah lalu rebuild:
+//   true  = VERSI 1: data bulan lalu TERHAPUS otomatis setelah export
+//   false = VERSI 2: data bulan lalu DISEMBUNYIKAN (kode riwayat)
+const bool VERSI_HAPUS_OTOMATIS = true;
+
+// Kode supervisor untuk melihat riwayat bulan lalu (Versi 2)
+const String KODE_RIWAYAT = 'hs123456';
+
+// ═══ TUTUP BUKU BULANAN ═══
+class TutupBuku {
+  static const String _keyLastExport = 'last_export_bulan';
+
+  static String _blm(DateTime t) =>
+      '${t.year}-${t.month.toString().padLeft(2, '0')}';
+
+  /// true = tanggal 1 & bulan ini belum pernah export -> input dikunci
+  static Future<bool> perluKunci() async {
+    final p = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    if (now.day != 1) return false;
+    return (p.getString(_keyLastExport) ?? '') != _blm(now);
+  }
+
+  /// dipanggil setiap Export to Excel berhasil
+  static Future<String?> tandaiExport() async {
+    final p = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    await p.setString(_keyLastExport, _blm(now));
+    if (VERSI_HAPUS_OTOMATIS) {
+      return await DBHelper.hapusBulanSebelumnya(_blm(now));
+    }
+    return null;
+  }
+}
+
+// ═══ SESI LIHAT BULAN (Versi 2) — reset otomatis saat app ditutup ═══
+class SesiBulan {
+  static bool riwayatTerbuka = false;      // kode hs123456 sudah dimasukkan
+  static String? bulanDipilih;             // 'YYYY-MM' atau null = bulan berjalan
+}
