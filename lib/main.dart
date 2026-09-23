@@ -758,7 +758,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     ),
-  ),
+    );
   }
   // TABEL REKAP DATA TERSIMPAN di halaman utama
   Widget _buildRekap() {

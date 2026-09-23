@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_id/android_id.dart';
+import 'db_helper.dart';
 
 class License {
   static const String _secret = 'BUSLINBROS-RAHASIA-2026';
