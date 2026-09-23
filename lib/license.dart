@@ -124,8 +124,9 @@ class TutupBuku {
     return (p.getString(_keyLast) ?? '') != _mingguIni(now);
   }
 
-  // alias kompatibilitas: nama lama tandaExport (jangan dipakai di kode baru)
+  // alias kompatibilitas: nama lama (jangan dipakai di kode baru)
   static Future<String?> tandaExport() => tandaiBackup();
+  static Future<String?> tandaiExport() => tandaiBackup();
 
   /// dipanggil setelah backup (V1) / export (V2) berhasil.
   /// V1 + tanggal 1 -> hapus data bulan sebelumnya.
