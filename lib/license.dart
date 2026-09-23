@@ -1,21 +1,39 @@
-// Sistem lisensi offline BUSLIN BROS
-// Kode lisensi 10 digit menyandikan tanggal kedaluwarsa.
-// Validasi offline: aplikasi menghitung ulang kode untuk rentang tanggal
-// dan membandingkan. Kode baru dibuat dengan gen_licensi.py (di root repo).
+// Sistem lisensi MODEL B — kode aktivasi TERIKAT pada HP (Kode HP unik).
+// Kode 10 digit disusun dari: rahasia + Kode HP + tanggal kedaluwarsa.
+// Kode dari HP lain TIDAK akan berfungsi.
+// Generate kode: APK Generator (HP owner) atau gen_licensi.py.
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:android_id/android_id.dart';
 
 class License {
   static const String _secret = 'BUSLINBROS-RAHASIA-2026';
   static const String _keyAktif = 'lisensi_aktif';
   static const String _keyKode = 'lisensi_kode';
+  static const _androidId = AndroidId();
 
-  static String _kodeUntuk(DateTime tgl) {
-    final days = DateTime(tgl.year, tgl.month, tgl.day)
-            .millisecondsSinceEpoch ~/
-        86400000;
-    final h = sha256.convert(utf8.encode('$_secret-$days')).toString();
+  /// Kode unik HP (8 karakter, dari Android ID yang di-hash).
+  /// Ditampilkan di layar aktivasi; pemilik app memakainya utk generate kode.
+  static Future<String> kodeHP() async {
+    try {
+      final id = await _androidId.getId() ?? 'unknown';
+      return sha256
+          .convert(utf8.encode(id))
+          .toString()
+          .substring(0, 8)
+          .toUpperCase();
+    } catch (_) {
+      return '????????';
+    }
+  }
+
+  static String _kodeUntuk(String device, DateTime tgl) {
+    final days =
+        DateTime(tgl.year, tgl.month, tgl.day).millisecondsSinceEpoch ~/
+            86400000;
+    final h =
+        sha256.convert(utf8.encode('$_secret|$device|$days')).toString();
     var digits = '';
     for (final ch in h.codeUnits) {
       if (ch >= 48 && ch <= 57) digits += String.fromCharCode(ch);
@@ -24,13 +42,14 @@ class License {
     return digits;
   }
 
-  /// cek kode valid & kembalikan tanggal kedaluwarsanya (null = tidak valid)
-  static DateTime? cek(String kode) {
+  /// validasi kode untuk HP INI; return tanggal kedaluwarsa (null = salah)
+  static Future<DateTime?> cek(String kode) async {
+    final dev = await kodeHP();
     final k = kode.trim();
     final now = DateTime.now();
     for (var i = -30; i <= 365 * 6; i++) {
       final tgl = now.add(Duration(days: i));
-      if (_kodeUntuk(tgl) == k) return tgl;
+      if (_kodeUntuk(dev, tgl) == k) return tgl;
     }
     return null;
   }
@@ -44,8 +63,7 @@ class License {
   static Future<bool> sudahAktif() async {
     final p = await SharedPreferences.getInstance();
     if (p.getBool(_keyAktif) != true) return false;
-    final kode = p.getString(_keyKode) ?? '';
-    final exp = cek(kode);
+    final exp = await cek(p.getString(_keyKode) ?? '');
     return exp != null && exp.isAfter(DateTime.now());
   }
 

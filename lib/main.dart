@@ -1481,9 +1481,16 @@ class LicensePage extends StatefulWidget {
 class _LicensePageState extends State<LicensePage> {
   final kode = TextEditingController();
   String? pesan;
+  String kodeHp = '...';
+
+  @override
+  void initState() {
+    super.initState();
+    License.kodeHP().then((v) => setState(() => kodeHp = v));
+  }
 
   Future<void> _aktivasi() async {
-    final exp = License.cek(kode.text);
+    final exp = await License.cek(kode.text);
     if (exp == null) {
       setState(() => pesan = 'Kode salah. Hubungi pemilik aplikasi.');
       return;
@@ -1509,8 +1516,42 @@ class _LicensePageState extends State<LicensePage> {
             const Text('Aplikasi Tbs',
                 style: TextStyle(fontSize: 14, color: Colors.grey)),
             const SizedBox(height: 24),
-            const Text('Masukkan kode lisensi dari supervisor:',
+            const Text('Kirim Kode HP di bawah ini ke pemilik aplikasi,\n'
+                'lalu masukkan kode aktivasi yang Anda terima:',
                 textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(children: [
+                const Icon(Icons.phone_android, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('KODE HP INI',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.black54)),
+                        SelectableText(kodeHp,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 18)),
+                      ]),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  tooltip: 'Salin Kode HP',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: kodeHp));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Kode HP tersalin.')));
+                  },
+                ),
+              ]),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: kode,
