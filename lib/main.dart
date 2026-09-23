@@ -1086,9 +1086,10 @@ class _HomePageState extends State<HomePage> {
                     child: Text('\ud83d\udcca Export to Excel')),
               PopupMenuItem(
                   value: 'backup', child: Text('\ud83d\udcbe Backup Data')),
-              PopupMenuItem(
-                  value: 'restore',
-                  child: Text('\ud83d\udce5 Restore Data')),
+              if (!VERSI_HAPUS_OTOMATIS)
+                const PopupMenuItem(
+                    value: 'restore',
+                    child: Text('\ud83d\udce5 Restore Data')),
               PopupMenuDivider(),
               PopupMenuItem(
                 value: 'hapus',
