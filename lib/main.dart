@@ -419,7 +419,8 @@ class _HomePageState extends State<HomePage> {
     final panen = await DBHelper.allPanen();
     final mandor = await Profil.namaMandor();
     await ExcelExporter.exportAndShare(rows, tgl, panen: panen, mandor: mandor);
-    final hapusInfo = await TutupBuku.tandaiExport();
+        final hapusInfo = await TutupBuku.tandaiBackup();
+
     await _cekKunci();
     await _refreshCount();
     if (mounted) {
