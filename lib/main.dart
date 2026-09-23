@@ -57,6 +57,40 @@ ThemeData temaAplikasi(int pilihan) {
   }
 }
 
+// Field dengan SARAN OTOMATIS dari riwayat (Opsi A) + huruf otomatis KAPITAL
+Widget saranField({
+  required String label,
+  required TextEditingController ctrl,
+  required String kolom,
+}) {
+  return FutureBuilder<List<String>>(
+    future: DBHelper.saran(kolom),
+    builder: (context, snap) {
+      final opts = snap.data ?? const <String>[];
+      return Autocomplete<String>(
+        optionsBuilder: (tv) {
+          final q = tv.text.trim().toUpperCase();
+          return opts
+              .where((o) => q.isEmpty || o.toUpperCase().contains(q))
+              .toList();
+        },
+        fieldViewBuilder: (context, fc, fn, onFieldSubmitted) {
+          if (fc.text != ctrl.text) fc.text = ctrl.text;
+          return TextField(
+            controller: fc,
+            focusNode: fn,
+            textCapitalization: TextCapitalization.characters,
+            onChanged: (v) => ctrl.text = v,
+            decoration: InputDecoration(labelText: label),
+          );
+        },
+        onSelected: (v) => ctrl.text = v,
+        optionsMaxHeight: 180,
+      );
+    },
+  );
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
@@ -263,14 +297,16 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
-            TextField(controller: perusahaan,
-                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
-            TextField(controller: supplier,
-                decoration: const InputDecoration(labelText: 'Supplier / Relasi')),
-            TextField(controller: nopol,
-                decoration: const InputDecoration(labelText: 'Plat No')),
-            TextField(controller: sopir,
-                decoration: const InputDecoration(labelText: 'Nama Supir')),
+            saranField(
+                label: 'Perusahaan/PKS',
+                ctrl: perusahaan,
+                kolom: 'perusahaan'),
+            saranField(
+                label: 'Supplier / Relasi',
+                ctrl: supplier,
+                kolom: 'supplier'),
+            saranField(label: 'Plat No', ctrl: nopol, kolom: 'nopol'),
+            saranField(label: 'Nama Supir', ctrl: sopir, kolom: 'sopir'),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -295,7 +331,7 @@ class _HomePageState extends State<HomePage> {
         ..noNota = noNota.text.trim().isEmpty ? null : noNota.text.trim()
         ..perusahaan = perusahaan.text.trim().isEmpty ? null : perusahaan.text.trim()
         ..supplier = supplier.text.trim().isEmpty ? null : supplier.text.trim()
-        ..nopol = nopol.text.trim().isEmpty ? null : nopol.text.trim()
+        ..nopol = NotaParser.normPlat(nopol.text)
         ..sopir = sopir.text.trim().isEmpty ? null : sopir.text.trim()
         ..bruto = double.tryParse(bruto.text)
         ..tara = double.tryParse(tara.text)
@@ -343,16 +379,15 @@ class _HomePageState extends State<HomePage> {
           child: Column(children: [
             TextField(controller: tgl,
                 decoration: const InputDecoration(labelText: 'Tanggal (YYYY-MM-DD)')),
-            TextField(controller: perusahaan,
-                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
-            TextField(controller: supplier,
-                decoration: const InputDecoration(labelText: 'Supplier')),
+            saranField(
+                label: 'Perusahaan/PKS',
+                ctrl: perusahaan,
+                kolom: 'perusahaan'),
+            saranField(label: 'Supplier', ctrl: supplier, kolom: 'supplier'),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
-            TextField(controller: nopol,
-                decoration: const InputDecoration(labelText: 'Nomor Polisi')),
-            TextField(controller: sopir,
-                decoration: const InputDecoration(labelText: 'Nama Supir')),
+            saranField(label: 'Nomor Polisi', ctrl: nopol, kolom: 'nopol'),
+            saranField(label: 'Nama Supir', ctrl: sopir, kolom: 'sopir'),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -379,7 +414,7 @@ class _HomePageState extends State<HomePage> {
         n.perusahaan = perusahaan.text.isEmpty ? null : perusahaan.text;
         n.supplier = supplier.text.isEmpty ? null : supplier.text;
         n.noNota = noNota.text;
-        n.nopol = nopol.text.isEmpty ? null : nopol.text;
+        n.nopol = NotaParser.normPlat(nopol.text);
         n.sopir = sopir.text.isEmpty ? null : sopir.text;
         n.bruto = double.tryParse(bruto.text);
         n.tara = double.tryParse(tara.text);
@@ -639,46 +674,66 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         actions: [
-          // MENU BACKUP / RESTORE
-          PopupMenuButton<String>(
-            tooltip: 'Menu',
-            onSelected: (v) {
-              if (v == 'backup') _backup();
-              if (v == 'restore') _restore();
-            },
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                  value: 'backup', child: Text('\ud83d\udcbe Backup Data')),
-              PopupMenuItem(
-                  value: 'restore', child: Text('\ud83d\udce5 Restore Data')),
-            ],
-          ),
-          // PROFIL MANDOR HP INI (ganti nama bila berganti)
-          IconButton(
-            icon: const Icon(Icons.person),
-            tooltip: 'Profil mandor HP ini',
-            onPressed: _profilMandor,
-          ),
-          // TOMBOL PANEN (janjang per blok)
-          IconButton(
-            icon: const Icon(Icons.park),
-            tooltip: 'Panen - janjang per blok',
-            onPressed: _bukaPanen,
-          ),
-          // TOMBOL HAPUS SEMUA DATA + FILE EXCEL
-          IconButton(
-            icon: const Icon(Icons.delete_forever),
-            tooltip: 'Hapus semua data',
-            onPressed: savedCount == 0 ? null : _hapusSemua,
-          ),
-          // COUNTER TERSIMPAN = TOMBOL BUKA DATA TERSIMPAN
+          // TERSIMPAN (bold) = tombol buka data tersimpan
           InkWell(
             onTap: _bukaDataTersimpan,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Center(child: Text('Tersimpan: $savedCount')),
+              child: Center(
+                child: Text('Tersimpan: $savedCount',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ),
+          ),
+          // MENU TITIK TIGA (semua aksi)
+          PopupMenuButton<String>(
+            tooltip: 'Menu',
+            onSelected: (v) {
+              switch (v) {
+                case 'panen':
+                  _bukaPanen();
+                  break;
+                case 'mandor':
+                  _profilMandor();
+                  break;
+                case 'export':
+                  _exportExcel();
+                  break;
+                case 'backup':
+                  _backup();
+                  break;
+                case 'restore':
+                  _restore();
+                  break;
+                case 'hapus':
+                  _hapusSemua();
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                  value: 'panen',
+                  child: Text('\ud83c\udf34 Panen - Janjang per Blok')),
+              PopupMenuItem(
+                  value: 'mandor',
+                  child: Text('\ud83d\udc64 Ganti Mandor')),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                  value: 'export',
+                  child: Text('\ud83d\udcca Export to Excel')),
+              PopupMenuItem(
+                  value: 'backup', child: Text('\ud83d\udcbe Backup Data')),
+              PopupMenuItem(
+                  value: 'restore',
+                  child: Text('\ud83d\udce5 Restore Data')),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'hapus',
+                child: Text('\ud83d\uddd1\ufe0f Delete All',
+                    style: TextStyle(color: Colors.red)),
+              ),
+            ],
           ),
         ],
       ),
@@ -751,20 +806,11 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.save),
                 label: Text('Simpan (${draft.length})'))),
             const SizedBox(width: 8),
-            Expanded(child: OutlinedButton.icon(
-                onPressed: _exportExcel,
-                icon: const Icon(Icons.table_chart),
-                label: const Text('Export Excel'))),
+            Expanded(child: FilledButton.tonalIcon(
+                onPressed: _inputManual,
+                icon: const Icon(Icons.edit_note),
+                label: const Text('Input Manual'))),
           ]),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: _inputManual,
-              icon: const Icon(Icons.edit_note),
-              label: const Text('New - Input Manual (tanpa kamera)'),
-            ),
-          ),
             ]),
           ),
         ),
@@ -839,16 +885,15 @@ class _SavedPageState extends State<SavedPage> {
         title: Text('Edit Nota #${m['id']}'),
         content: SingleChildScrollView(
           child: Column(children: [
-            TextField(controller: perusahaan,
-                decoration: const InputDecoration(labelText: 'Perusahaan/PKS')),
-            TextField(controller: supplier,
-                decoration: const InputDecoration(labelText: 'Supplier')),
+            saranField(
+                label: 'Perusahaan/PKS',
+                ctrl: perusahaan,
+                kolom: 'perusahaan'),
+            saranField(label: 'Supplier', ctrl: supplier, kolom: 'supplier'),
             TextField(controller: noNota,
                 decoration: const InputDecoration(labelText: 'No Tiket')),
-            TextField(controller: nopol,
-                decoration: const InputDecoration(labelText: 'Nomor Polisi')),
-            TextField(controller: sopir,
-                decoration: const InputDecoration(labelText: 'Nama Supir')),
+            saranField(label: 'Nomor Polisi', ctrl: nopol, kolom: 'nopol'),
+            saranField(label: 'Nama Supir', ctrl: sopir, kolom: 'sopir'),
             TextField(controller: bruto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Bruto (kg)')),
             TextField(controller: tara, keyboardType: TextInputType.number,
@@ -876,7 +921,7 @@ class _SavedPageState extends State<SavedPage> {
         'perusahaan': perusahaan.text.isEmpty ? null : perusahaan.text,
         'supplier': supplier.text.isEmpty ? null : supplier.text,
         'no_nota': noNota.text,
-        'nopol': nopol.text.isEmpty ? null : nopol.text,
+        'nopol': NotaParser.normPlat(nopol.text),
         'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
         'netto_bersih': bb ?? (n != null ? n - (m['potongan'] ?? 0) : null),
@@ -1320,6 +1365,7 @@ class _PanenPageState extends State<PanenPage> {
                 const SizedBox(width: 8),
                 Expanded(child: TextField(
                   controller: blok,
+                  textCapitalization: TextCapitalization.characters,
                   decoration: const InputDecoration(
                       labelText: 'Blok *', isDense: true),
                 )),
@@ -1343,6 +1389,7 @@ class _PanenPageState extends State<PanenPage> {
               const SizedBox(height: 8),
               TextField(
                 controller: ket,
+                textCapitalization: TextCapitalization.characters,
                 decoration: const InputDecoration(
                     labelText: 'Keterangan (ops.)', isDense: true),
               ),

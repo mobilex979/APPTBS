@@ -79,6 +79,18 @@ class DBHelper {
     return (await db).query('panen', orderBy: 'id DESC');
   }
 
+  // ═══ SARAN OTOMATIS (Opsi A): nilai unik dari riwayat nota ═══
+  static const _kolomSaran = {'sopir', 'nopol', 'supplier', 'perusahaan'};
+
+  static Future<List<String>> saran(String kolom, {int limit = 8}) async {
+    if (!_kolomSaran.contains(kolom)) return const [];
+    final r = await (await db).rawQuery(
+        "SELECT $kolom v, COUNT(*) c FROM nota WHERE $kolom IS NOT NULL "
+        "AND TRIM($kolom) <> '' GROUP BY $kolom ORDER BY c DESC, v LIMIT ?",
+        [limit]);
+    return r.map((m) => m['v'].toString()).toList();
+  }
+
   // ═══ BACKUP & RESTORE (pindah HP / reinstall tanpa kehilangan data) ═══
   static Future<Map<String, dynamic>> backupAll() async {
     await _ensurePanen();

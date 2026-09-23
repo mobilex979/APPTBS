@@ -77,6 +77,16 @@ class NotaParser {
     return (m.group(1) ?? m.group(2))?.trim();
   }
 
+  /// Normalisasi plat: 'bn 1234 ta' -> 'BN-1234-TA'; 'B1234TC' -> 'B-1234-TC'
+  static String? normPlat(String? s) {
+    if (s == null) return null;
+    final raw = s.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (raw.isEmpty) return null;
+    final m = RegExp(r'^([A-Z]+)(\d+)([A-Z]+)$').firstMatch(raw);
+    if (m != null) return '${m.group(1)}-${m.group(2)}-${m.group(3)}';
+    return raw;
+  }
+
   static String? _get(String key, String text) =>
       p[key]!.firstMatch(text)?.group(1)?.trim();
 
@@ -134,7 +144,7 @@ class NotaParser {
       ..tanggal = _parseTanggal(_get('tanggal', text), _get('tanggal2', text))
       ..noNota = _get('no_nota', text)
       ..supplier = _get('supplier', text)
-      ..nopol = _get('nopol', text)
+      ..nopol = normPlat(_get('nopol', text))
       ..produk = _get('produk', text)
       ..sopir = _get('sopir', text)
       ..jamMasuk = _get('jam_masuk', text)
