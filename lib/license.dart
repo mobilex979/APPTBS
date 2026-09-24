@@ -96,6 +96,19 @@ class Profil {
     final p = await SharedPreferences.getInstance();
     await p.setString(_keyMandor, nama.trim());
   }
+
+  static const String _keyWilayah = 'wilayah_mandor';
+
+  static Future<String?> wilayah() async {
+    final p = await SharedPreferences.getInstance();
+    final w = p.getString(_keyWilayah);
+    return (w == null || w.trim().isEmpty) ? null : w.trim();
+  }
+
+  static Future<void> simpanWilayah(String w) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_keyWilayah, w.trim());
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

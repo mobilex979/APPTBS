@@ -79,6 +79,38 @@ class DBHelper {
     return (await db).query('panen', orderBy: 'id DESC');
   }
 
+  // ═══ GRUP PEMBORONG (upah per kg per grup) ═══
+  static Future<void> _ensureGrup() async {
+    await (await db).execute(
+      'CREATE TABLE IF NOT EXISTS grup('
+      'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+      'panen_id INTEGER, nama TEXT, tonase REAL, harga REAL,'
+      'tambahan REAL, status TEXT DEFAULT \'cek\','
+      'anggota TEXT,'
+      'created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+  }
+
+  static Future<List<Map<String, dynamic>>> allGrup() async {
+    await _ensureGrup();
+    return (await db).query('grup');
+  }
+
+  static Future<int> insertGrup(Map<String, dynamic> m) async {
+    await _ensureGrup();
+    return (await db).insert('grup', m);
+  }
+
+  static Future<int> updateGrup(int id, Map<String, dynamic> values) async {
+    await _ensureGrup();
+    return (await db).update('grup', values,
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> deleteGrup(int id) async {
+    await _ensureGrup();
+    return (await db).delete('grup', where: 'id = ?', whereArgs: [id]);
+  }
+
   // ═══ TUTUP BUKU ═══
   /// hapus data bulan sebelumnya; return keterangan jumlah yg dihapus
   static Future<String> hapusBulanSebelumnya(String bulanIni) async {
@@ -90,7 +122,10 @@ class DBHelper {
     final n2 = await dbx.delete('panen',
         where: "substr(COALESCE(tanggal, created_at), 1, 7) < ?",
         whereArgs: [bulanIni]);
-    return 'nota $n1 & panen $n2 (bulan lalu) terhapus';
+    await _ensureGrup();
+    final n3 = await dbx.delete('grup',
+        where: 'panen_id NOT IN (SELECT id FROM panen)');
+    return 'nota $n1, panen $n2 & grup $n3 (bulan lalu) terhapus';
   }
 
   /// daftar bulan yang punya data (untuk pemilih riwayat)
@@ -130,6 +165,7 @@ class DBHelper {
       'waktu': DateTime.now().toIso8601String(),
       'nota': await dbx.query('nota'),
       'panen': await dbx.query('panen'),
+      'grup': await allGrup(),
     };
   }
 
@@ -213,6 +249,20 @@ class DBHelper {
         await dbx.update('panen', m, where: 'id = ?', whereArgs: [pid]);
       } else {
         await dbx.insert('panen', m);
+      }
+    }
+
+    // grup: timpa/gabung by id (anggota = JSON di dalam baris)
+    await _ensureGrup();
+    for (final row in (data['grup'] as List? ?? const [])) {
+      final m = Map<String, dynamic>.from(row);
+      final gid = m['id'] as int;
+      final ada = await dbx
+          .rawQuery('SELECT COUNT(*) c FROM grup WHERE id = ?', [gid]);
+      if (((ada.first['c'] as int?) ?? 0) > 0) {
+        await dbx.update('grup', m, where: 'id = ?', whereArgs: [gid]);
+      } else {
+        await dbx.insert('grup', m);
       }
     }
 

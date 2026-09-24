@@ -60,7 +60,9 @@ ThemeData temaAplikasi(int pilihan) {
       t = ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true);
   }
   // Terapkan font Nunito ke seluruh aplikasi
-  return t.copyWith(textTheme: GoogleFonts.nunitoTextTheme(t.textTheme));
+  return t.copyWith(
+      textTheme:
+          GoogleFonts.nunitoTextTheme(t.textTheme).apply(fontSizeFactor: 1.2));
 }
 
 // tanggal: ISO (YYYY-MM-DD) <-> tampilan (DD-MM-YYYY)
@@ -1057,8 +1059,7 @@ class _HomePageState extends State<HomePage> {
               DataCell(SelectableText(fmtNum(m['bruto']))),
               DataCell(SelectableText(fmtNum(m['tara']))),
               DataCell(SelectableText(fmtNum(m['potongan']))),
-              DataCell(SelectableText(fmtNum(m['netto_bersih']),
-                  style: const TextStyle(fontWeight: FontWeight.bold))),
+              DataCell(SelectableText(fmtNum(m['netto_bersih']))),
             ]),
         ],
       ),
@@ -1149,12 +1150,10 @@ class _HomePageState extends State<HomePage> {
                 child:
                     Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   SelectableText('Rekap Tersimpan: $savedCount nota',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 17)),
+                      style: const TextStyle(fontSize: 20)),
                   SelectableText(ringkasan.split('\n').sublist(1).join('\n'),
                       style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                           color: Colors.black87)),
                 ]),
               ),
@@ -1571,8 +1570,7 @@ class _SavedPageState extends State<SavedPage> {
                                 : selected.remove(m['id'])),
                           )
                         : CircleAvatar(child: Text('${m['id']}')),
-                    title: SelectableText('${m['supplier'] ?? '(tanpa supplier)'}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: SelectableText('${m['supplier'] ?? '(tanpa supplier)'}'),
                     subtitle: SelectableText(
                       '${m['perusahaan'] ?? '-'} • Tiket: ${_fmt(m['no_nota'])} • ${_fmt(m['tanggal'])} • Supir: ${m['sopir'] ?? '-'}\n'
                       'Bruto: ${_fmt(m['bruto'])} | Tara: ${_fmt(m['tara'])} | '
@@ -1615,6 +1613,7 @@ class _PanenPageState extends State<PanenPage> {
   late final TextEditingController tanggal;
   List<Map<String, dynamic>> rows = [];
   List<Map<String, dynamic>> notaRows = [];
+  Map<int, List<Map<String, dynamic>>> grupMap = {};
   bool selectMode = false;
   final Set<int> selected = {};
 
@@ -1644,6 +1643,10 @@ class _PanenPageState extends State<PanenPage> {
     }
     rows = r;
     notaRows = n;
+    grupMap = {};
+    for (final g in await DBHelper.allGrup()) {
+      grupMap.putIfAbsent(g['panen_id'] as int, () => []).add(g);
+    }
     if (mounted) setState(() {});
   }
 
@@ -1772,6 +1775,262 @@ class _PanenPageState extends State<PanenPage> {
   String _avgLabel(Map<String, dynamic> p) {
     final a = _avgBlok(p);
     return a == null ? '' : '\nRata2: ${a.toStringAsFixed(1)} kg/JJG';
+  }
+
+  // ═══ GRUP PEMBORONG: section, kartu, dialog ═══
+  List<Map<String, dynamic>> _parseAnggota(dynamic json) {
+    try {
+      final l = jsonDecode((json ?? '[]').toString()) as List;
+      return l.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  double _tiketBerat(Map<String, dynamic> p) {
+    var t = 0.0;
+    for (final id in _linkedIds(p)) {
+      for (final n in notaRows) {
+        if (n['id'] == id) {
+          t += (n['netto_bersih'] as num? ?? 0);
+          break;
+        }
+      }
+    }
+    return t;
+  }
+
+  double _sisaKuota(Map<String, dynamic> p, int? excludeGrupId) {
+    var used = 0.0;
+    for (final g in grupMap[p['id']] ?? const <Map<String, dynamic>>[]) {
+      if (g['id'] != excludeGrupId) used += (g['tonase'] as num? ?? 0);
+    }
+    return _tiketBerat(p) - used;
+  }
+
+  Widget _grupSection(Map<String, dynamic> p) {
+    final list = grupMap[p['id']] ?? const <Map<String, dynamic>>[];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final g in list) _grupCard(p, g),
+        if (!selectMode)
+          TextButton.icon(
+            icon: const Icon(Icons.group_add, size: 18),
+            label: const Text('+ Grup'),
+            onPressed: () => _grupDialog(p, null),
+          ),
+      ]),
+    );
+  }
+
+  Widget _grupCard(Map<String, dynamic> p, Map<String, dynamic> g) {
+    final ton = (g['tonase'] as num? ?? 0);
+    final hrg = (g['harga'] as num? ?? 0);
+    final tamb = (g['tambahan'] as num? ?? 0);
+    final upah = ton * hrg + tamb;
+    final anggota = _parseAnggota(g['anggota']);
+    final hadir = anggota.where((a) => a['hadir'] == 1).length;
+    final setuju = g['status'] == 'setuju';
+    final warna = setuju ? Colors.green : Colors.orange;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      decoration: BoxDecoration(
+        color: (setuju ? Colors.green : Colors.orange)[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: warna),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: Icon(Icons.group, size: 20, color: warna),
+        title: Text(
+            '${g['nama']} - Rp ${fmt(upah)}${hadir > 0 ? ' -> ${fmt(upah / hadir)}/org' : ''}',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: Text(
+            '${fmt(ton)} kg x Rp ${hrg.toStringAsFixed(0)}/kg + ${fmt(tamb)}'
+            '  •  ${anggota.map((a) => a['nama']).join(', ')}',
+            style: const TextStyle(fontSize: 11)),
+        trailing: Wrap(spacing: 0, children: [
+          if (!VERSI_HAPUS_OTOMATIS && !setuju)
+            IconButton(
+              icon: const Icon(Icons.check_circle,
+                  size: 20, color: Colors.green),
+              tooltip: 'Setujui harga (V2)',
+              onPressed: () => _setujuiGrup(g),
+            ),
+          if (!selectMode) ...[
+            IconButton(
+              icon: const Icon(Icons.edit, size: 18, color: Colors.orange),
+              onPressed: () => _grupDialog(p, g),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+              onPressed: () => _hapusGrup(g),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _setujuiGrup(Map<String, dynamic> g) async {
+    await DBHelper.updateGrup(g['id'] as int, {'status': 'setuju'});
+    await _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Harga grup disetujui.')));
+    }
+  }
+
+  Future<void> _hapusGrup(Map<String, dynamic> g) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus ${g['nama']}?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await DBHelper.deleteGrup(g['id'] as int);
+      await _load();
+    }
+  }
+
+  Future<void> _grupDialog(Map<String, dynamic> p, Map<String, dynamic>? g) async {
+    final sisa = _sisaKuota(p, g?['id'] as int?);
+    final namaC = TextEditingController(text: g?['nama']?.toString() ?? '');
+    final anggotaC = TextEditingController(
+        text: g == null
+            ? ''
+            : _parseAnggota(g['anggota'])
+                .map((a) => a['nama'])
+                .join(', '));
+    final tonaseC =
+        TextEditingController(text: g?['tonase']?.toString() ?? '');
+    final hargaC = TextEditingController(text: g?['harga']?.toString() ?? '');
+    final tambC =
+        TextEditingController(text: g?['tambahan']?.toString() ?? '');
+    List<Map<String, dynamic>> anggota =
+        g == null ? [] : _parseAnggota(g['anggota']);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) {
+          void parseNama() {
+            final names = anggotaC.text
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
+            final lama = {for (final a in anggota) a['nama'] as String: a};
+            anggota = [
+              for (final nm in names) lama[nm] ?? {'nama': nm, 'hadir': 1}
+            ];
+            setD(() {});
+          }
+
+          anggotaC.removeListener(parseNama);
+          anggotaC.addListener(parseNama);
+          final ton = double.tryParse(tonaseC.text) ?? 0;
+          final hrg = double.tryParse(hargaC.text) ?? 0;
+          final tamb = double.tryParse(tambC.text) ?? 0;
+          final over = ton > sisa;
+          final upah = ton * hrg + tamb;
+          final hadir = anggota.where((a) => a['hadir'] == 1).length;
+          return AlertDialog(
+            title: Text(g == null
+                ? 'Tambah Grup - Blok ${p['blok']}'
+                : 'Edit Grup ${g['nama']}'),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                    controller: namaC,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                        labelText: 'Nama Grup (mis: Grup 1)')),
+                TextField(
+                    controller: anggotaC,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                        labelText: 'Anggota (pisahkan koma)')),
+                if (anggota.isNotEmpty)
+                  Wrap(spacing: 4, children: [
+                    for (var i = 0; i < anggota.length; i++)
+                      FilterChip(
+                        label: Text(anggota[i]['nama'] as String,
+                            style: const TextStyle(fontSize: 11)),
+                        selected: anggota[i]['hadir'] == 1,
+                        onSelected: (v) =>
+                            setD(() => anggota[i]['hadir'] = v ? 1 : 0),
+                      ),
+                  ]),
+                TextField(
+                    controller: tonaseC,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                        labelText: 'Tonase (kg) - sisa kuota ${fmt(sisa)} kg',
+                        errorText:
+                            over ? 'Melebihi sisa kuota tiket!' : null)),
+                TextField(
+                    controller: hargaC,
+                    keyboardType: TextInputType.number,
+                    maxLength: 3,
+                    decoration: const InputDecoration(
+                        labelText: 'Harga Rp/kg (maks 3 digit)',
+                        counterText: '')),
+                TextField(
+                    controller: tambC,
+                    keyboardType: TextInputType.number,
+                    decoration:
+                        const InputDecoration(labelText: 'Tambahan (Rp)')),
+                const SizedBox(height: 8),
+                Text(
+                    'Upah grup = ${fmt(upah)}'
+                    '${hadir > 0 ? ' -> ${fmt(upah / hadir)}/org ($hadir hadir)' : ''}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: over ? Colors.red : Colors.green[700])),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Batal')),
+              FilledButton(
+                  onPressed: over ? null : () => Navigator.pop(ctx, true),
+                  child: const Text('Simpan')),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok == true) {
+      final map = <String, dynamic>{
+        'panen_id': p['id'],
+        'nama': namaC.text.trim().isEmpty ? 'Grup' : namaC.text.trim(),
+        'tonase': double.tryParse(tonaseC.text) ?? 0,
+        'harga': double.tryParse(hargaC.text) ?? 0,
+        'tambahan': double.tryParse(tambC.text) ?? 0,
+        'anggota': jsonEncode(anggota),
+        'status': 'cek',
+      };
+      if (g == null) {
+        await DBHelper.insertGrup(map);
+      } else {
+        await DBHelper.updateGrup(g['id'] as int, map);
+      }
+      await _load();
+    }
   }
 
   // dialog pilih nota timbang yang terhubung ke blok ini (bisa beberapa)
@@ -1992,8 +2251,7 @@ class _PanenPageState extends State<PanenPage> {
           child: Row(children: [
             const Icon(Icons.forest, size: 18, color: Colors.green),
             const SizedBox(width: 8),
-            Text('Total: ${fmt(totalJjg)} jjg dari ${rows.length} blok',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('Total: ${fmt(totalJjg)} jjg dari ${rows.length} blok'),
           ]),
         ),
         const Divider(),
@@ -2008,7 +2266,8 @@ class _PanenPageState extends State<PanenPage> {
                     return Card(
                       margin: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 4),
-                      child: ListTile(
+                      child: Column(children: [
+                        ListTile(
                         dense: true,
                         onTap: selectMode
                             ? () => setState(() => selected.contains(m['id'])
@@ -2028,8 +2287,7 @@ class _PanenPageState extends State<PanenPage> {
                                 child: Text('${m['jjg']}',
                                     style: const TextStyle(fontSize: 12)),
                               ),
-                        title: SelectableText('Blok ${m['blok']}',
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: SelectableText('Blok ${m['blok']}'),
                         subtitle: SelectableText(
                             '${m['tanggal']}${m['mandor'] != null ? ' • Mandor: ${m['mandor']}' : ''}'
                             '${_tiketLabel(m)}'
@@ -2058,7 +2316,9 @@ class _PanenPageState extends State<PanenPage> {
                                   onPressed: () => _hapus(m),
                                 ),
                               ]),
-                      ),
+                        ),
+                        _grupSection(m),
+                      ]),
                     );
                   },
                 ),
