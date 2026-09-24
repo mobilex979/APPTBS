@@ -1913,8 +1913,13 @@ class _PanenPageState extends State<PanenPage> {
             : _parseAnggota(g['anggota'])
                 .map((a) => a['nama'])
                 .join(', '));
-    final tonaseC =
-        TextEditingController(text: g?['tonase']?.toString() ?? '');
+    final jmlGrupLain =
+        (grupMap[p['id']]?.length ?? 0) - (g == null ? 0 : 1);
+    final kunciTonase = jmlGrupLain == 0;
+    final tonaseC = TextEditingController(
+        text: kunciTonase
+            ? sisa.toStringAsFixed(0)
+            : (g?['tonase']?.toString() ?? ''));
     final hargaC = TextEditingController(text: g?['harga']?.toString() ?? '');
     final tambC =
         TextEditingController(text: g?['tambahan']?.toString() ?? '');
@@ -1976,9 +1981,12 @@ class _PanenPageState extends State<PanenPage> {
                   ]),
                 TextField(
                     controller: tonaseC,
+                    readOnly: kunciTonase,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                        labelText: 'Tonase (kg) - sisa kuota ${fmt(sisa)} kg',
+                        labelText: kunciTonase
+                            ? 'Tonase OTOMATIS = berat tiket (${fmt(sisa)} kg) - 1 grup'
+                            : 'Tonase (kg) - sisa kuota ${fmt(sisa)} kg',
                         errorText:
                             over ? 'Melebihi sisa kuota tiket!' : null)),
                 TextField(
