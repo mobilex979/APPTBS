@@ -91,6 +91,65 @@ jobs:
           open(p, 'w').write(s)
           PYEOF
 
+      # Icon aplikasi: pohon sawit (digenerate tiap build)
+      - name: App icon
+        run: |
+          pip -q install pillow
+          python3 - << 'PYEOF'
+          from PIL import Image, ImageDraw
+
+          import os
+          from PIL import Image, ImageDraw
+
+          def gambar_icon(size):
+              S = 512
+              img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+              d = ImageDraw.Draw(img)
+              bg = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+              bd = ImageDraw.Draw(bg)
+              for i in range(S):
+                  t = i / S
+                  r = int(0x2E + (0x1B - 0x2E) * t)
+                  g = int(0x7D + (0x5E - 0x7D) * t)
+                  b = int(0x32 + (0x20 - 0x32) * t)
+                  bd.line([(0, i), (S, i)], fill=(r, g, b, 255))
+              mask = Image.new('L', (S, S), 0)
+              md = ImageDraw.Draw(mask)
+              md.rounded_rectangle([8, 8, S-8, S-8], radius=110, fill=255)
+              img.paste(bg, (0, 0), mask)
+              cx, cy = S * 0.5, S * 0.46
+              brown = (109, 76, 65, 255)
+              d.line([(cx-6, cy+150), (cx-14, cy+60), (cx-4, cy-6)],
+                     fill=brown, width=30, joint='curve')
+              for t in range(5):
+                  y = cy + 130 - t * 34
+                  d.line([(cx-18, y), (cx+10, y-6)], fill=(141, 110, 99, 255), width=6)
+              hijau_tua = (27, 94, 32, 255)
+              hijau = (46, 125, 50, 255)
+              daun = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+              for sudut in [-155, -110, -65, -20, 25, -135]:
+                  leaf = Image.new('RGBA', (300, 90), (0, 0, 0, 0))
+                  ld = ImageDraw.Draw(leaf)
+                  ld.pieslice([10, -30, 300, 130], 180, 360, fill=hijau)
+                  ld.arc([30, -10, 280, 110], 200, 340, fill=hijau_tua, width=6)
+                  leaf = leaf.rotate(-sudut - 90, expand=False, resample=Image.BICUBIC)
+                  daun.paste(leaf, (int(cx - 150), int(cy - 120)), leaf)
+              img.paste(daun, (0, 0), daun)
+              for dx, dy in [(-28, 8), (24, 4), (0, 22)]:
+                  d.ellipse([cx+dx-24, cy+dy-24, cx+dx+24, cy+dy+24],
+                            fill=(141, 110, 99, 255), outline=(109, 76, 65, 255), width=5)
+              d.rounded_rectangle([cx-90, cy+148, cx+90, cy+176], radius=14,
+                                  fill=(104, 159, 56, 255))
+              return img.resize((size, size), Image.LANCZOS)
+
+          for dpi, px in [('mdpi', 48), ('hdpi', 72), ('xhdpi', 96),
+                          ('xxhdpi', 144), ('xxxhdpi', 192)]:
+              d = f'android/app/src/main/res/mipmap-{dpi}'
+              os.makedirs(d, exist_ok=True)
+              gambar_icon(px).save(f'{d}/ic_launcher.png')
+          print('icons OK')
+          PYEOF
+
       # Nama tampilan aplikasi
       - name: App label
         run: |
