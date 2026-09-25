@@ -115,7 +115,7 @@ class Profil {
 // KONFIGURASI VERSI APK — ganti nilai di bawah lalu rebuild:
 //   true  = VERSI 1: data bulan lalu TERHAPUS otomatis setelah export
 //   false = VERSI 2: data bulan lalu DISEMBUNYIKAN (kode riwayat)
-const bool VERSI_HAPUS_OTOMATIS = false;
+const bool VERSI_HAPUS_OTOMATIS = true;
 
 // Kode supervisor untuk melihat riwayat bulan lalu (Versi 2)
 const String KODE_RIWAYAT = 'hs123456';

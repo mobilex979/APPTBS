@@ -89,6 +89,16 @@ String namaBulan(String ym) {
   return '${b != null && b >= 1 && b <= 12 ? bln[b - 1] : p[1]} ${p[0]}';
 }
 
+// parse anggota grup dari JSON tersimpan
+List<Map<String, dynamic>> parseAnggotaJson(dynamic json) {
+  try {
+    final l = jsonDecode((json ?? '[]').toString()) as List;
+    return l.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  } catch (_) {
+    return [];
+  }
+}
+
 // Field dengan SARAN OTOMATIS dari riwayat (Opsi A) + huruf otomatis KAPITAL
 Widget saranField({
   required String label,
@@ -424,6 +434,51 @@ class _HomePageState extends State<HomePage> {
             content: Text('Nota manual ditambahkan ke daftar. Klik Simpan untuk menyimpan.')));
       }
     }
+  }
+
+  // EXPORT GAJI GRUP PERIODE (V2) - mengikuti bulan terpilih
+  Future<void> _exportGaji() async {
+    final grup = await DBHelper.allGrup();
+    final panen = await DBHelper.all();
+    final pOf = {for (final p in panen) p['id'] as int: p};
+    final rows = <Map<String, dynamic>>[];
+    for (final g in grup) {
+      final p = pOf[g['panen_id']];
+      if (p == null) continue;
+      if (SesiBulan.bulanDipilih != null) {
+        final tgl = (p['tanggal'] ?? p['created_at'] ?? '').toString();
+        if (!tgl.startsWith(SesiBulan.bulanDipilih!)) continue;
+      }
+      final anggota = parseAnggotaJson(g['anggota']);
+      final hadir = anggota.where((a) => a['hadir'] == 1).length;
+      final ton = (g['tonase'] as num? ?? 0);
+      final upah =
+          ton * ((g['harga'] as num? ?? 0)) + ((g['tambahan'] as num? ?? 0));
+      rows.add({
+        'tanggal': p['tanggal'] ?? '',
+        'blok': p['blok'] ?? '',
+        'grup': g['nama'] ?? '',
+        'anggota': anggota
+            .map((a) => '${a['nama']}${a['hadir'] == 1 ? '' : ' (tdk hadir)'}')
+            .join(', '),
+        'hadir': hadir,
+        'tonase': ton,
+        'harga': g['harga'] ?? 0,
+        'tambahan': g['tambahan'] ?? 0,
+        'upah': upah,
+        'per_org': hadir > 0 ? upah / hadir : 0,
+        'status': g['status'] ?? '',
+      });
+    }
+    if (rows.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Belum ada data grup.')));
+      }
+      return;
+    }
+    final tgl = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await ExcelExporter.exportGajiAndShare(rows, tgl);
   }
 
   Future<void> _exportExcel() async {
@@ -956,18 +1011,28 @@ class _HomePageState extends State<HomePage> {
   // GANTI NAMA MANDOR HP INI
   Future<void> _profilMandor() async {
     final sekarang = await Profil.namaMandor();
+    final wSekarang = await Profil.wilayah();
     final ctrl = TextEditingController(text: sekarang);
+    final wCtrl = TextEditingController(text: wSekarang);
     final ok = await showDialog<bool>(
       barrierDismissible: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Profil Mandor HP Ini'),
-        content: TextField(
-          controller: ctrl,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-              labelText: 'Nama mandor penanggung jawab'),
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: ctrl,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+                labelText: 'Nama mandor penanggung jawab'),
+          ),
+          TextField(
+            controller: wCtrl,
+            textCapitalization: TextCapitalization.characters,
+            decoration:
+                const InputDecoration(labelText: 'Wilayah (afd/blok)'),
+          ),
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Batal')),
@@ -978,6 +1043,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (ok == true && ctrl.text.trim().length >= 2) {
       await Profil.simpanMandor(ctrl.text);
+      await Profil.simpanWilayah(wCtrl.text);
       await _refreshCount();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -1252,6 +1318,9 @@ class _HomePageState extends State<HomePage> {
                 case 'restore':
                   _restore();
                   break;
+                case 'gaji':
+                  _exportGaji();
+                  break;
                 case 'hapus':
                   _hapusSemua();
                   break;
@@ -1284,6 +1353,10 @@ class _HomePageState extends State<HomePage> {
                 const PopupMenuItem(
                     value: 'restore',
                     child: Text('\ud83d\udce5 Restore Data')),
+              if (!VERSI_HAPUS_OTOMATIS)
+                const PopupMenuItem(
+                    value: 'gaji',
+                    child: Text('\ud83d\udcb0 Gaji Grup (Excel)')),
               PopupMenuDivider(),
               PopupMenuItem(
                 value: 'hapus',
@@ -2485,6 +2558,7 @@ class MandorPage extends StatefulWidget {
 
 class _MandorPageState extends State<MandorPage> {
   final nama = TextEditingController();
+  final wilayah = TextEditingController();
 
   Future<void> _simpan() async {
     if (nama.text.trim().length < 2) {
@@ -2493,6 +2567,9 @@ class _MandorPageState extends State<MandorPage> {
       return;
     }
     await Profil.simpanMandor(nama.text);
+    if (wilayah.text.trim().isNotEmpty) {
+      await Profil.simpanWilayah(wilayah.text);
+    }
     if (mounted) {
       Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomePage()));
@@ -2521,6 +2598,15 @@ class _MandorPageState extends State<MandorPage> {
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
                 labelText: 'Nama Mandor / Penanggung Jawab',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: wilayah,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Wilayah (afd / blok / kebun)',
                 border: OutlineInputBorder(),
               ),
             ),

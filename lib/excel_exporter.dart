@@ -193,6 +193,46 @@ class ExcelExporter {
     return file;
   }
 
+  // Export khusus GAJI GRUP PERIODE (dipanggil dari menu V2)
+  static Future<void> exportGajiAndShare(
+      List<Map<String, dynamic>> rows, String tanggal) async {
+    final wb = Workbook();
+    wb.worksheets.clear();
+    const headers = [
+      'Tanggal', 'Blok', 'Grup', 'Anggota', 'Hadir',
+      'Tonase (kg)', 'Rp/kg', 'Tambahan (Rp)', 'Upah Grup', 'Upah/Org', 'Status'
+    ];
+    final ws = wb.worksheets.addWithName('GAJI PERIODE');
+    for (var c = 0; c < headers.length; c++) {
+      ws.getRangeByIndex(1, c + 1).setText(headers[c]);
+    }
+    for (var r = 0; r < rows.length; r++) {
+      final m = rows[r];
+      final vals = [
+        m['tanggal'], m['blok'], m['grup'], m['anggota'], m['hadir'],
+        m['tonase'], m['harga'], m['tambahan'], m['upah'], m['per_org'],
+        m['status']
+      ];
+      for (var c = 0; c < vals.length; c++) {
+        final cell = ws.getRangeByIndex(r + 2, c + 1);
+        final v = vals[c];
+        if (v is num) {
+          cell.setNumber(v.toDouble());
+        } else {
+          cell.setText(v?.toString() ?? '');
+        }
+      }
+    }
+    final bytes = wb.saveAsStream();
+    wb.dispose();
+    final dir = await getExternalStorageDirectory()
+        ?? await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/Gaji_Grup_$tanggal.xlsx');
+    await file.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles([XFile(file.path)],
+        text: 'Gaji grup periode $tanggal');
+  }
+
   static Future<void> exportAndShare(List<Map<String, dynamic>> rows, String tanggal,
       {List<Map<String, dynamic>>? panen, String? mandor}) async {
     final f = await export(rows, tanggal, panen: panen, mandor: mandor);
