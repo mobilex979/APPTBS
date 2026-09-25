@@ -439,7 +439,7 @@ class _HomePageState extends State<HomePage> {
   // EXPORT GAJI GRUP PERIODE (V2) - mengikuti bulan terpilih
   Future<void> _exportGaji() async {
     final grup = await DBHelper.allGrup();
-    final panen = await DBHelper.all();
+    final panen = await DBHelper.allPanen();
     final pOf = {for (final p in panen) p['id'] as int: p};
     final rows = <Map<String, dynamic>>[];
     for (final g in grup) {
@@ -472,8 +472,10 @@ class _HomePageState extends State<HomePage> {
     }
     if (rows.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Belum ada data grup.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Belum ada data grup. Buka Panen -> pilih blok -> '
+                'tombol "+ Grup" untuk isi anggota & upah. Data grup dari HP '
+                'mandor masuk lewat Restore backup.')));
       }
       return;
     }
@@ -1509,6 +1511,7 @@ class _SavedPageState extends State<SavedPage> {
     final bruto = TextEditingController(text: m['bruto']?.toString());
     final tara = TextEditingController(text: m['tara']?.toString());
     final netto = TextEditingController(text: m['netto']?.toString());
+    final potongan = TextEditingController(text: m['potongan']?.toString());
     void hitungNetto() {
       final b = double.tryParse(bruto.text);
       final t = double.tryParse(tara.text);
@@ -1541,6 +1544,8 @@ class _SavedPageState extends State<SavedPage> {
                 decoration: const InputDecoration(labelText: 'Tara (kg)')),
             TextField(controller: netto, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Netto (kg)')),
+            TextField(controller: potongan, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Potongan (kg)')),
           ]),
         ),
         actions: [
@@ -1562,8 +1567,9 @@ class _SavedPageState extends State<SavedPage> {
         'nopol': NotaParser.normPlat(nopol.text),
         'sopir': sopir.text.isEmpty ? null : sopir.text,
         'bruto': b, 'tara': t, 'netto': n,
+        'potongan': double.tryParse(potongan.text),
         'netto_bersih':
-            (n != null) ? n - ((m['potongan'] as num? ?? 0)) : null,
+            (n != null) ? n - (double.tryParse(potongan.text) ?? 0) : null,
       });
       await _load();
       if (mounted) {
