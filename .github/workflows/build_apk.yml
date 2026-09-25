@@ -17,7 +17,7 @@ jobs:
           channel: 'stable'
 
       # Buat scaffold Android lengkap (folder android/ dibuat baru tiap build)
-      - run: flutter create --platforms android --project-name nota_tbs_app .
+      - run: flutter create --platforms android --org com.buslinbros --project-name bbapp_tbs .
 
       # Keystore tetap di ROOT repo -> salin ke android/app
       - run: cp buslin-keystore.p12 android/app/buslin-keystore.p12
@@ -88,6 +88,17 @@ jobs:
                   '<data android:mimeType="*/*"/>'
                   '</intent-filter>')
           s = s.replace('</activity>', filt + '</activity>')
+          open(p, 'w').write(s)
+          PYEOF
+
+      # Nama tampilan aplikasi
+      - name: App label
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          s = re.sub(r'android:label="[^"]*"', 'android:label="BBappTBS"', s)
           open(p, 'w').write(s)
           PYEOF
 
