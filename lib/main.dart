@@ -1935,6 +1935,7 @@ class _PanenPageState extends State<PanenPage> {
         leading: Icon(Icons.group, size: 20, color: warna),
         title: Text(
             '${terkunci ? '🔒 ' : ''}${g['nama']}'
+            '${isPertama && listG.length > 1 && ton == 0 ? ' (tiket habis terpakai grup lain)' : ''}'
             '${isPertama && listG.length > 1 ? ' (sisa otomatis)' : ''}'
             '${isPertama && listG.length == 1 ? ' (otomatis = tiket)' : ''}'
             ' - Rp ${fmt(upah)}${hadir > 0 ? ' -> ${fmt(upah / hadir)}/org' : ''}',
@@ -2048,7 +2049,7 @@ class _PanenPageState extends State<PanenPage> {
     final kunciTonase =
         jmlGrupLain == 0 || (g != null && g['id'] != lastId);
     final tonaseC = TextEditingController(
-        text: kunciTonase
+        text: (g == null && kunciTonase)
             ? sisa.toStringAsFixed(0)
             : (g?['tonase']?.toString() ?? ''));
     final hargaC = TextEditingController(text: g?['harga']?.toString() ?? '');
@@ -2172,14 +2173,19 @@ class _PanenPageState extends State<PanenPage> {
       ),
     );
     if (ok == true) {
+      final hargaBaru = double.tryParse(hargaC.text) ?? 0;
+      final hargaLama = (g?['harga'] as num?) ?? 0;
+      final statusBaru = (g != null && hargaLama == hargaBaru)
+          ? (g['status']?.toString() ?? 'cek')
+          : 'cek';
       final map = <String, dynamic>{
         'panen_id': p['id'],
         'nama': namaC.text.trim().isEmpty ? 'Grup' : namaC.text.trim(),
         'tonase': double.tryParse(tonaseC.text) ?? 0,
-        'harga': double.tryParse(hargaC.text) ?? 0,
+        'harga': hargaBaru,
         'tambahan': double.tryParse(tambC.text) ?? 0,
         'anggota': jsonEncode(anggota),
-        'status': 'cek',
+        'status': statusBaru,
       };
       if (g == null) {
         await DBHelper.insertGrup(map);
