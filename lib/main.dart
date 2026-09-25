@@ -1874,9 +1874,15 @@ class _PanenPageState extends State<PanenPage> {
   }
 
   double _sisaKuota(Map<String, dynamic> p, int? excludeGrupId) {
+    final list = grupMap[p['id']] ?? const <Map<String, dynamic>>[];
+    if (list.isEmpty) return _tiketBerat(p);
+    final pertamaId = list.first['id'];
     var used = 0.0;
-    for (final g in grupMap[p['id']] ?? const <Map<String, dynamic>>[]) {
-      if (g['id'] != excludeGrupId) used += (g['tonase'] as num? ?? 0);
+    for (final g in list) {
+      final gid = g['id'];
+      // Grup 1 (sisa otomatis) dikecualikan: dia menyusut sendiri
+      if (gid == pertamaId || gid == excludeGrupId) continue;
+      used += (g['tonase'] as num? ?? 0);
     }
     return _tiketBerat(p) - used;
   }
