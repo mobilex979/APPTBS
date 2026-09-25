@@ -1,4 +1,4 @@
-name: nota_tbs_app
+name: bbapp_tbs
 description: Aplikasi input nota timbang TBS via OCR (ML Kit) dengan export Excel per supplier.
 publish_to: "none"
 version: 1.0.0+1
