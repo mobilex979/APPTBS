@@ -7,6 +7,7 @@ class Nota {
   double? bruto, tara, netto, potongan, berat, sortasi, jjg, harga, total;
   String fileFoto = '';
   String catatan = '';
+  String catatanKoreksi = '';
   bool sudahAda = false;   // no tiket sudah tersimpan di database
 
   double? get nettoBersih => berat ??
@@ -162,15 +163,33 @@ class NotaParser {
     if (n.berat != null && n.harga != null) {
       n.total = n.berat! * n.harga!;
     }
+    // NETTO di-cross-check dengan rumus: Netto = Bruto - Tara
+    // (angka NETTO hasil OCR hanya pembanding, rumus selalu menang)
+    final nettoOcr = n.netto;
+    if (n.bruto != null && n.tara != null) {
+      n.netto = n.bruto! - n.tara!;
+    }
+    if (nettoOcr != null &&
+        n.netto != null &&
+        (nettoOcr - n.netto!).abs() >= 1) {
+      n.catatanKoreksi =
+          'Netto OCR $nettoOcr dikoreksi -> ${n.netto} (Bruto - Tara)';
+    }
     final info = <String>[
       'Sumber: Foto OCR',
       if (n.produk != null) 'Produk: ${n.produk}',
       if (n.sortasi != null) 'Sortasi: ${n.sortasi}%',
       if (n.jamMasuk != null) 'Masuk: ${n.jamMasuk}',
     ];
-    n.catatan = n.perluCek
+    var catatanFinal = n.perluCek
         ? 'CEK MANUAL${info.isEmpty ? '' : ' | ${info.join(' | ')}'}'
         : (info.isEmpty ? '' : info.join(' | '));
+    if (n.catatanKoreksi.isNotEmpty) {
+      catatanFinal = catatanFinal.isEmpty
+          ? n.catatanKoreksi
+          : '$catatanFinal | ${n.catatanKoreksi}';
+    }
+    n.catatan = catatanFinal;
     return n;
   }
 }
