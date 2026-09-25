@@ -92,7 +92,7 @@ class DBHelper {
 
   static Future<List<Map<String, dynamic>>> allGrup() async {
     await _ensureGrup();
-    return (await db).query('grup');
+    return (await db).query('grup', orderBy: 'id');
   }
 
   static Future<int> insertGrup(Map<String, dynamic> m) async {

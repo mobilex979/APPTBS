@@ -1906,6 +1906,11 @@ class _PanenPageState extends State<PanenPage> {
     final hadir = anggota.where((a) => a['hadir'] == 1).length;
     final setuju = g['status'] == 'setuju';
     final warna = setuju ? Colors.green : Colors.orange;
+    final listG = grupMap[p['id']] ?? const <Map<String, dynamic>>[];
+    final isLast =
+        listG.isEmpty || listG.last['id'] == g['id'];
+    final terkunci = !isLast;
+    final isPertama = listG.isNotEmpty && listG.first['id'] == g['id'];
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
@@ -1917,7 +1922,10 @@ class _PanenPageState extends State<PanenPage> {
         dense: true,
         leading: Icon(Icons.group, size: 20, color: warna),
         title: Text(
-            '${g['nama']} - Rp ${fmt(upah)}${hadir > 0 ? ' -> ${fmt(upah / hadir)}/org' : ''}',
+            '${terkunci ? '🔒 ' : ''}${g['nama']}'
+            '${isPertama && listG.length > 1 ? ' (sisa otomatis)' : ''}'
+            '${isPertama && listG.length == 1 ? ' (otomatis = tiket)' : ''}'
+            ' - Rp ${fmt(upah)}${hadir > 0 ? ' -> ${fmt(upah / hadir)}/org' : ''}',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         subtitle: Text(
             '${fmt(ton)} kg x Rp ${hrg.toStringAsFixed(0)}/kg + ${fmt(tamb)}'
@@ -1946,6 +1954,31 @@ class _PanenPageState extends State<PanenPage> {
     );
   }
 
+  // Grup 1 selalu = sisa tiket setelah semua grup lain (otomatis)
+  Future<void> _rebalanceOtomatis(Map<String, dynamic> p) async {
+    final list = grupMap[p['id']] ?? const <Map<String, dynamic>>[];
+    if (list.isEmpty) return;
+    final pertama = list.first;
+    if (list.length == 1) {
+      // hanya 1 grup -> kembali penuh sesuai tiket
+      final full = _tiketBerat(p);
+      if (((pertama['tonase'] as num? ?? 0) - full).abs() > 0.001) {
+        await DBHelper.updateGrup(
+            pertama['id'] as int, {'tonase': full});
+      }
+      return;
+    }
+    var lain = 0.0;
+    for (final x in list.sublist(1)) {
+      lain += (x['tonase'] as num? ?? 0);
+    }
+    final sisa = _tiketBerat(p) - lain;
+    if (((pertama['tonase'] as num? ?? 0) - sisa).abs() > 0.001) {
+      await DBHelper.updateGrup(
+          pertama['id'] as int, {'tonase': sisa < 0 ? 0 : sisa});
+    }
+  }
+
   Future<void> _setujuiGrup(Map<String, dynamic> g) async {
     await DBHelper.updateGrup(g['id'] as int, {'status': 'setuju'});
     await _load();
@@ -1972,7 +2005,17 @@ class _PanenPageState extends State<PanenPage> {
       ),
     );
     if (ok == true) {
+      final pid = g['panen_id'] as int;
       await DBHelper.deleteGrup(g['id'] as int);
+      await _load();
+      Map<String, dynamic>? pRow;
+      for (final r in rows) {
+        if (r['id'] == pid) {
+          pRow = r;
+          break;
+        }
+      }
+      if (pRow != null) await _rebalanceOtomatis(pRow);
       await _load();
     }
   }
@@ -1986,9 +2029,12 @@ class _PanenPageState extends State<PanenPage> {
             : _parseAnggota(g['anggota'])
                 .map((a) => a['nama'])
                 .join(', '));
-    final jmlGrupLain =
-        (grupMap[p['id']]?.length ?? 0) - (g == null ? 0 : 1);
-    final kunciTonase = jmlGrupLain == 0;
+    final listAwal = grupMap[p['id']] ?? const <Map<String, dynamic>>[];
+    final lastId = listAwal.isEmpty ? -1 : (listAwal.last['id'] as int);
+    final jmlGrupLain = listAwal.length - (g == null ? 0 : 1);
+    // terkunci bila: satu-satunya grup (auto=tiket) ATAU bukan grup terakhir
+    final kunciTonase =
+        jmlGrupLain == 0 || (g != null && g['id'] != lastId);
     final tonaseC = TextEditingController(
         text: kunciTonase
             ? sisa.toStringAsFixed(0)
@@ -2019,6 +2065,9 @@ class _PanenPageState extends State<PanenPage> {
 
           anggotaC.removeListener(parseNama);
           anggotaC.addListener(parseNama);
+          void refresh() => setD(() {});
+          tonaseC.removeListener(refresh);
+          tonaseC.addListener(refresh);
           final ton = double.tryParse(tonaseC.text) ?? 0;
           final hrg = double.tryParse(hargaC.text) ?? 0;
           final tamb = double.tryParse(tambC.text) ?? 0;
@@ -2058,7 +2107,9 @@ class _PanenPageState extends State<PanenPage> {
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                         labelText: kunciTonase
-                            ? 'Tonase OTOMATIS = berat tiket (${fmt(sisa)} kg) - 1 grup'
+                            ? (jmlGrupLain == 0
+                                ? 'Tonase OTOMATIS = berat tiket (${fmt(sisa)} kg) - 1 grup'
+                                : 'Tonase TERKUNCI (hanya grup terakhir yang dapat diubah)')
                             : 'Tonase (kg) - sisa kuota ${fmt(sisa)} kg',
                         errorText:
                             over ? 'Melebihi sisa kuota tiket!' : null)),
@@ -2074,6 +2125,19 @@ class _PanenPageState extends State<PanenPage> {
                     keyboardType: TextInputType.number,
                     decoration:
                         const InputDecoration(labelText: 'Tambahan (Rp)')),
+                if (!kunciTonase)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      over
+                          ? 'MELEBIHI sisa kuota ${fmt(sisa)} kg! Simpan diblokir.'
+                          : 'Sisa kuota LIVE: ${fmt(sisa)} kg - setelah grup ini: ${fmt(sisa - ton)} kg',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: over ? Colors.red : Colors.green[700]),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Text(
                     'Upah grup = ${fmt(upah)}'
@@ -2110,6 +2174,8 @@ class _PanenPageState extends State<PanenPage> {
       } else {
         await DBHelper.updateGrup(g['id'] as int, map);
       }
+      await _load();
+      await _rebalanceOtomatis(p);
       await _load();
     }
   }
