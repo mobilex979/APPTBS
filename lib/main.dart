@@ -139,8 +139,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'BUSLIN BROS - Aplikasi Tbs',
         theme: temaAplikasi(PILIH_TEMA),
-        darkTheme: temaAplikasi(4),
-        themeMode: ThemeMode.system,
         home: const Gate(),
         debugShowCheckedModeBanner: false,
       );
