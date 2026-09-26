@@ -99,20 +99,31 @@ class ExcelExporter {
         0, (a, m) => a + (m['netto_bersih'] as num? ?? 0));
     final totJjg = (panen ?? []).fold<double>(
         0, (a, m) => a + (m['jjg'] as num? ?? 0));
-    final avg = totJjg > 0 ? totBerat / totJjg : null;
+    // berat hanya dari tiket yang TER-LINK ke blok panen (seperti per-blok)
+    var beratLinked = 0.0;
+    for (final n in rows) {
+      if (blokOf.containsKey(n['id'])) {
+        beratLinked += (n['netto_bersih'] as num? ?? 0);
+      }
+    }
+    final avg = totJjg > 0
+        ? ((beratLinked > 0 ? beratLinked : totBerat) / totJjg)
+        : null;
 
     final r0 = rows.length + 5;
     wsSemua.getRangeByIndex(r0, 1).setText('REKAP TIMBANG vs PANEN');
-    wsSemua.getRangeByIndex(r0 + 1, 1).setText('Total Berat Bersih (kg)');
+    wsSemua.getRangeByIndex(r0 + 1, 1).setText('Total Berat Bersih Semua (kg)');
     wsSemua.getRangeByIndex(r0 + 1, 2).setNumber(totBerat);
-    wsSemua.getRangeByIndex(r0 + 2, 1).setText('Total Janjang Panen (jjg)');
-    wsSemua.getRangeByIndex(r0 + 2, 2).setNumber(totJjg);
-    wsSemua.getRangeByIndex(r0 + 3, 1).setText('Rata-rata (kg/JJG)');
+    wsSemua.getRangeByIndex(r0 + 2, 1).setText('Total Berat TIKET TER-LINK (kg)');
+    wsSemua.getRangeByIndex(r0 + 2, 2).setNumber(beratLinked);
+    wsSemua.getRangeByIndex(r0 + 3, 1).setText('Total Janjang Panen (jjg)');
+    wsSemua.getRangeByIndex(r0 + 3, 2).setNumber(totJjg);
+    wsSemua.getRangeByIndex(r0 + 4, 1).setText('Rata-rata (kg/JJG)');
     if (avg != null) {
-      wsSemua.getRangeByIndex(r0 + 3, 2)
+      wsSemua.getRangeByIndex(r0 + 4, 2)
           .setNumber(double.parse(avg.toStringAsFixed(2)));
     } else {
-      wsSemua.getRangeByIndex(r0 + 3, 2).setText('isi data panen dulu');
+      wsSemua.getRangeByIndex(r0 + 4, 2).setText('isi data panen dulu');
     }
 
     // Sheet PANEN: janjang per blok (input di lapangan)
@@ -173,8 +184,8 @@ class ExcelExporter {
       wsPanen.getRangeByIndex(rp, 1).setText('REKAP TIMBANG vs PANEN');
       wsPanen.getRangeByIndex(rp + 1, 1).setText('Total JJG Panen');
       wsPanen.getRangeByIndex(rp + 1, 3).setNumber(totJjg);
-      wsPanen.getRangeByIndex(rp + 2, 1).setText('Total Berat Bersih Timbang (kg)');
-      wsPanen.getRangeByIndex(rp + 2, 3).setNumber(totBerat);
+      wsPanen.getRangeByIndex(rp + 2, 1).setText('Total Berat TIKET TER-LINK (kg)');
+      wsPanen.getRangeByIndex(rp + 2, 3).setNumber(beratLinked);
       wsPanen.getRangeByIndex(rp + 3, 1).setText('Rata-rata (kg/JJG)');
       if (avg != null) {
         wsPanen.getRangeByIndex(rp + 3, 3)
