@@ -139,6 +139,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'BUSLIN BROS - Aplikasi Tbs',
         theme: temaAplikasi(PILIH_TEMA),
+        darkTheme: temaAplikasi(4),
+        themeMode: ThemeMode.system,
         home: const Gate(),
         debugShowCheckedModeBanner: false,
       );
@@ -2057,6 +2059,9 @@ class _PanenPageState extends State<PanenPage> {
         TextEditingController(text: g?['tambahan']?.toString() ?? '');
     List<Map<String, dynamic>> anggota =
         g == null ? [] : _parseAnggota(g['anggota']);
+    final snapshotAwal = g == null
+        ? ''
+        : '${g['nama']}|${g['tonase']}|${g['harga']}|${g['tambahan']}|${g['anggota']}';
 
     final ok = await showDialog<bool>(
       context: context,
@@ -2081,7 +2086,16 @@ class _PanenPageState extends State<PanenPage> {
           void refresh() => setD(() {});
           tonaseC.removeListener(refresh);
           tonaseC.addListener(refresh);
+          namaC.removeListener(refresh);
+          namaC.addListener(refresh);
+          hargaC.removeListener(refresh);
+          hargaC.addListener(refresh);
+          tambC.removeListener(refresh);
+          tambC.addListener(refresh);
           final ton = double.tryParse(tonaseC.text) ?? 0;
+          final snapshotSekarang =
+              '${namaC.text}|${tonaseC.text}|${hargaC.text}|${tambC.text}|${jsonEncode(anggota)}';
+          final adaUbah = g == null || snapshotSekarang != snapshotAwal;
           final hrg = double.tryParse(hargaC.text) ?? 0;
           final tamb = double.tryParse(tambC.text) ?? 0;
           final over = ton > sisa;
@@ -2165,7 +2179,8 @@ class _PanenPageState extends State<PanenPage> {
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Batal')),
               FilledButton(
-                  onPressed: over ? null : () => Navigator.pop(ctx, true),
+                  onPressed:
+                      (over || !adaUbah) ? null : () => Navigator.pop(ctx, true),
                   child: const Text('Simpan')),
             ],
           );
